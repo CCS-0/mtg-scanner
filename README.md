@@ -1,6 +1,20 @@
-# Acervo MTG — Scanner v0.3.0
+# Acervo MTG — Scanner v0.3.1
 
-Primeira versão que tenta identificar a carta.
+Versão de ajuste óptico do scanner.
+
+## Mudança principal
+
+A moldura ficou menor por padrão e passou a ser ajustável.
+
+O objetivo é permitir que o celular fique fisicamente mais distante da carta, onde muitas câmeras conseguem focar melhor o nome e o rodapé. Para OCR, uma imagem menor mas realmente nítida costuma ser melhor que uma imagem maior fora de foco.
+
+### Como usar
+
+1. Afaste o celular até o nome e o rodapé ficarem visivelmente nítidos.
+2. Abra `Ajustes da câmera`.
+3. Ajuste `Tamanho da moldura` para coincidir com o tamanho aparente da carta.
+4. O valor fica salvo no navegador para os próximos usos.
+5. O scanner espera um pouco mais pela nitidez antes da captura automática.
 
 ## Fluxo
 
@@ -61,7 +75,7 @@ Substitua:
 - manifest.webmanifest
 - README.md
 
-Confirme `Scanner v0.3.0`.
+Confirme `Scanner v0.3.1`.
 
 ## Dependências externas
 
