@@ -1,4 +1,4 @@
-# Acervo MTG — Scanner v0.3.6
+# Acervo MTG — Scanner v0.3.7
 
 Versão de ajuste óptico do scanner.
 
@@ -75,7 +75,7 @@ Substitua:
 - manifest.webmanifest
 - README.md
 
-Confirme `Scanner v0.3.6`.
+Confirme `Scanner v0.3.7`.
 
 ## Dependências externas
 
@@ -83,7 +83,7 @@ Tesseract.js v5 é carregado sob demanda via jsDelivr.
 Scryfall é consultado diretamente pelo navegador.
 
 
-## Ajuste v0.3.6
+## Ajuste v0.3.7
 
 O tamanho mínimo da moldura foi reduzido de 48% para 35%.
 
@@ -94,7 +94,7 @@ Faixa atual:
 Isso permite afastar mais o celular da carta para buscar uma distância de foco melhor.
 
 
-## Ajuste v0.3.6 — toque para focar
+## Ajuste v0.3.7 — toque para focar
 
 A moldura padrão passa a ser 45%.
 
@@ -116,7 +116,7 @@ Um quadrado aparece no ponto tocado para confirmar a interação.
 Em `Ajustes da câmera`, a linha `Toque para focar` informa o nível de suporte disponível no aparelho.
 
 
-## Ajuste v0.3.6 — fotografia real
+## Ajuste v0.3.7 — fotografia real
 
 Esta versão testa `ImageCapture.takePhoto()`.
 
@@ -157,7 +157,7 @@ O dado decisivo é comparar o rodapé:
 Se a fotografia real ainda ficar muito abaixo do app nativo da câmera, o próximo passo recomendado é encerrar o protótipo web e migrar para Android CameraX.
 
 
-## Ajuste v0.3.6 — Modo Máximo Web
+## Ajuste v0.3.7 — Modo Máximo Web
 
 Novidades:
 - seleção explícita da câmera física via enumerateDevices + deviceId;
@@ -171,7 +171,7 @@ Novidades:
 Teste cada câmera traseira listada e compare Capacidade anunciada, Stream real, Resize mode real e o rodapé da carta.
 
 
-## Ajuste v0.3.6 — OCR robusto + Scryfall
+## Ajuste v0.3.7 — OCR robusto + Scryfall
 
 A câmera escolhida pode ser lembrada pelo navegador.
 
@@ -201,3 +201,29 @@ A tela mostra:
 Também há um campo para corrigir o nome manualmente. Isso separa claramente:
 - falha de OCR;
 - falha de acesso/consulta ao Scryfall.
+
+
+## Ajuste v0.3.7 — moldura ampliada
+
+Como a câmera física selecionada está entregando imagem melhor, o enquadramento volta a ser maior.
+
+- padrão: 55%
+- mínimo: 35%
+- máximo: 85%
+
+O objetivo é fazer a carta ocupar mais pixels sem ultrapassar a distância em que o autofocus começa a perder nitidez.
+
+A região de OCR do rodapé também ficou um pouco mais concentrada e alta para priorizar:
+- set;
+- collector number;
+- idioma.
+
+### Teste sugerido
+
+Compare principalmente:
+- 50%
+- 55%
+- 60%
+- 65%
+
+Pare de aumentar quando perceber que o texto começa a perder foco, mesmo que a carta fique maior.

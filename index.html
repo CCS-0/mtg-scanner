@@ -4,17 +4,17 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#101318" />
-  <title>Acervo MTG — Scanner v0.3.6</title>
-  <link rel="manifest" href="manifest.webmanifest?v=036" />
-  <link rel="stylesheet" href="styles.css?v=036" />
+  <title>Acervo MTG — Scanner v0.3.7</title>
+  <link rel="manifest" href="manifest.webmanifest?v=037" />
+  <link rel="stylesheet" href="styles.css?v=037" />
 </head>
 <body>
   <main class="app">
     <header>
       <div>
         <p class="eyebrow">ACERVO MTG</p>
-        <h1>Scanner v0.3.6</h1>
-        <p class="sub">OCR robusto + Scryfall</p>
+        <h1>Scanner v0.3.7</h1>
+        <p class="sub">OCR robusto + moldura ampliada</p>
       </div>
       <div class="counter">
         <span id="count">0</span>
@@ -187,8 +187,8 @@
       </label>
       <label>
         Tamanho da moldura
-        <input id="frameSizeSlider" type="range" min="35" max="76" step="1" value="45" />
-        <output id="frameSizeValue">45%</output>
+        <input id="frameSizeSlider" type="range" min="35" max="85" step="1" value="55" />
+        <output id="frameSizeValue">55%</output>
       </label>
       <p class="helper">Afaste o celular até o texto ficar nítido e ajuste esta moldura para coincidir com a carta.</p>
 
@@ -217,7 +217,7 @@
 
     <section class="notes">
       <h2>Objetivo desta versão</h2>
-      <p>Agora a câmera já não é o único foco: o nome é lido em múltiplos recortes e pré-processamentos. O sistema remove a região de mana do título, gera candidatos alternativos e tenta o Scryfall em cascata. O objetivo desta versão é descobrir se a falha vinha da qualidade da imagem ou da interpretação do OCR.</p>
+      <p>Com a câmera física correta selecionada, a moldura agora começa maior para colocar mais pixels do nome e do rodapé na captura. O nome continua sendo lido em múltiplos recortes e pré-processamentos. O sistema remove a região de mana do título, gera candidatos alternativos e tenta o Scryfall em cascata. O objetivo desta versão é descobrir se a falha vinha da qualidade da imagem ou da interpretação do OCR.</p>
     </section>
 
     <canvas id="analysisCanvas" width="240" height="336" hidden></canvas>
@@ -226,6 +226,6 @@
     <canvas id="footerOcrCanvas" width="1800" height="300" hidden></canvas>
   </main>
 
-  <script src="app.js?v=036"></script>
+  <script src="app.js?v=037"></script>
 </body>
 </html>

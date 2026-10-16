@@ -49,11 +49,11 @@ function applyFrameSize(){
   frameSizeValue.value=pct+'%';
   const maxPx=Math.round(365*(pct/72));
   frame.style.setProperty('--frame-w', `min(${pct}vw, ${maxPx}px)`);
-  try{ localStorage.setItem('mtg-frame-size', String(pct)); }catch(_){}
+  try{ localStorage.setItem('mtg-frame-size-v037', String(pct)); }catch(_){}
 }
 try{
-  const saved=Number(localStorage.getItem('mtg-frame-size'));
-  if(saved>=35 && saved<=76) frameSizeSlider.value=String(saved);
+  const saved=Number(localStorage.getItem('mtg-frame-size-v037'));
+  if(saved>=35 && saved<=85) frameSizeSlider.value=String(saved);
 }catch(_){}
 applyFrameSize();
 frameSizeSlider.addEventListener('input',applyFrameSize);
@@ -933,10 +933,10 @@ async function analyzeCapturedCard(){
     cropAndPreprocess(
       captureCanvas,
       footerOcrCanvas,
-      .025,
-      .820,
-      .95,
-      .155,
+      .020,
+      .805,
+      .96,
+      .175,
       'adaptive'
     );
 
