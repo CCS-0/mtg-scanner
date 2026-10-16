@@ -50,9 +50,13 @@
   let currentCandidate = null;
   let currentDetectionSourceRect = null;
 
-  ratioTolerance.addEventListener('input', () => ratioToleranceValue.value = ratioTolerance.value + '%');
-  cornerThreshold.addEventListener('input', () => cornerThresholdValue.value = cornerThreshold.value + ' px');
-  minArea.addEventListener('input', () => minAreaValue.value = minArea.value + '%');
+  // Diagnóstico: confirma que este arquivo realmente carregou.
+  if (engineStatus) engineStatus.textContent = 'Interface pronta — carregando detector…';
+  if (startBtn) startBtn.dataset.jsLoaded = 'true';
+
+  ratioTolerance?.addEventListener('input', () => { if (ratioToleranceValue) ratioToleranceValue.value = ratioTolerance.value + '%'; });
+  cornerThreshold?.addEventListener('input', () => { if (cornerThresholdValue) cornerThresholdValue.value = cornerThreshold.value + ' px'; });
+  minArea?.addEventListener('input', () => { if (minAreaValue) minAreaValue.value = minArea.value + '%'; });
 
   function markCvReady() {
     if (cvReady) return;
@@ -449,7 +453,12 @@
 
   async function startCamera() {
     try {
-      startBtn.disabled = true; setStatus('Solicitando acesso à câmera…');
+      setStatus('Clique recebido — solicitando acesso à câmera…');
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('getUserMedia não está disponível neste navegador/contexto.');
+      }
+      startBtn.disabled = true;
+      startBtn.textContent = 'Abrindo câmera…';
       audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
       stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
@@ -461,12 +470,17 @@
       setStatus(cvReady ? 'Procurando uma carta…' : 'Câmera ativa — aguardando detector geométrico…');
       requestAnimationFrame(analyze);
     } catch (err) {
-      console.error(err); startBtn.disabled = false; setStatus('Não foi possível abrir a câmera');
+      console.error(err);
+      startBtn.disabled = false;
+      startBtn.textContent = 'Tentar novamente';
+      setStatus('Não foi possível abrir a câmera — ' + (err?.name || 'erro'));
       alert('Não foi possível abrir a câmera.\n\nUse a página HTTPS do GitHub Pages e permita o acesso à câmera.\n\nDetalhe: ' + (err?.message || err));
     }
   }
 
-  startBtn.addEventListener('click', startCamera);
+  window.startMtgCamera = startCamera;
+  // O botão usa onclick inline como fallback robusto. Não adicionamos outro listener
+  // para evitar disparo duplo em navegadores móveis.
   manualBtn.addEventListener('click', manualCapture);
   window.addEventListener('resize', resizeOverlay);
   window.addEventListener('beforeunload', () => stream?.getTracks().forEach(t => t.stop()));

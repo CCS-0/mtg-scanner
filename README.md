@@ -1,4 +1,4 @@
-# Acervo MTG — Scanner v0.2.1
+# Acervo MTG — Scanner v0.2.2
 
 Esta versão corrige o principal problema observado na v0.1: **uma cena qualquer, apenas por ficar estável, não deve mais disparar uma captura**.
 
@@ -79,6 +79,17 @@ A v0.2 reconhece **geometria de carta**, ainda não reconhece que o conteúdo é
 A próxima etapa (v0.3) será a validação semântica: ler a faixa do nome e/ou a linha de coleção/collector number via OCR antes de considerar a captura válida.
 
 
-## Correção v0.2.1
+## Correção v0.2.2
 
 A câmera não depende mais da inicialização do OpenCV. O botão `Iniciar câmera` fica disponível imediatamente. O detector geométrico inicializa em paralelo e o status da tela informa separadamente se a câmera e o detector estão prontos. Isso evita que uma falha ou demora do OpenCV impeça a câmera de abrir.
+
+
+## Diagnóstico v0.2.2
+
+Ao tocar em **Iniciar câmera**, o status deve mudar imediatamente para `Clique recebido — iniciando câmera…`.
+
+- Se isso não acontecer, o navegador ainda está exibindo uma versão antiga do `index.html`.
+- Se aparecer `Erro: app.js ainda não carregou`, o HTML foi atualizado, mas o JavaScript não foi carregado.
+- Se aparecer `Clique recebido — solicitando acesso à câmera…`, o JavaScript está funcionando e o próximo diagnóstico é a permissão/API da câmera.
+
+Os arquivos `app.js` e `styles.css` usam `?v=022` no HTML para evitar cache antigo do GitHub Pages/navegador.

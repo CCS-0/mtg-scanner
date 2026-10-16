@@ -4,16 +4,16 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#101318" />
-  <title>Acervo MTG — Scanner v0.2.1</title>
+  <title>Acervo MTG — Scanner v0.2.2</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=022" />
 </head>
 <body>
   <main class="app">
     <header>
       <div>
         <p class="eyebrow">ACERVO MTG</p>
-        <h1>Scanner v0.2.1</h1>
+        <h1>Scanner v0.2.2</h1>
       </div>
       <div class="counter">
         <span id="count">0</span>
@@ -43,7 +43,7 @@
     </section>
 
     <section class="controls">
-      <button id="startBtn" class="primary">Iniciar câmera</button>
+      <button id="startBtn" class="primary" type="button" onclick="window.__mtgStartClick && window.__mtgStartClick(event)">Iniciar câmera</button>
       <button id="manualBtn" class="secondary" disabled>Capturar agora</button>
       <label class="toggle">
         <input id="autoToggle" type="checkbox" checked />
@@ -102,7 +102,21 @@
     <canvas id="captureCanvas" width="630" height="880" hidden></canvas>
   </main>
 
-  <script src="app.js"></script>
+  <script>
+    window.__mtgStartClick = function () {
+      var status = document.getElementById('status');
+      if (status) status.textContent = 'Clique recebido — iniciando câmera…';
+      if (typeof window.startMtgCamera === 'function') {
+        window.startMtgCamera();
+      } else {
+        if (status) status.textContent = 'Erro: app.js ainda não carregou';
+        setTimeout(function () {
+          if (typeof window.startMtgCamera === 'function') window.startMtgCamera();
+        }, 500);
+      }
+    };
+  </script>
+  <script defer src="app.js?v=022"></script>
   <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvScriptLoaded()" onerror="onOpenCvScriptFailed()"></script>
 </body>
 </html>
