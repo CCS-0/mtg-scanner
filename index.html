@@ -4,17 +4,17 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#101318" />
-  <title>Acervo MTG — Scanner v0.3.3</title>
-  <link rel="manifest" href="manifest.webmanifest?v=033" />
-  <link rel="stylesheet" href="styles.css?v=033" />
+  <title>Acervo MTG — Scanner v0.3.4</title>
+  <link rel="manifest" href="manifest.webmanifest?v=034" />
+  <link rel="stylesheet" href="styles.css?v=034" />
 </head>
 <body>
   <main class="app">
     <header>
       <div>
         <p class="eyebrow">ACERVO MTG</p>
-        <h1>Scanner v0.3.3</h1>
-        <p class="sub">OCR + toque para focar</p>
+        <h1>Scanner v0.3.4</h1>
+        <p class="sub">Foto real + OCR</p>
       </div>
       <div class="counter">
         <span id="count">0</span>
@@ -26,6 +26,7 @@
       <div><span class="dot ok"></span><span>Detector leve pronto</span></div>
       <div><span class="dot" id="cameraDot"></span><span id="cameraStatus">Câmera desligada</span></div>
       <div><span class="dot" id="focusDot"></span><span id="focusStatus">Foco: aguardando câmera</span></div>
+      <div><span class="dot" id="photoDot"></span><span id="photoStatus">Foto real: aguardando câmera</span></div>
       <div><span class="dot" id="ocrDot"></span><span id="ocrStatus">OCR: será carregado na primeira análise</span></div>
     </section>
 
@@ -57,6 +58,8 @@
       <div><small>Estabilidade</small><strong id="stability">—</strong></div>
       <div class="metric-wide"><small>Nitidez inferior</small><strong id="bottomSharpness">—</strong></div>
       <div class="metric-wide"><small>Stream real</small><strong id="streamInfo">—</strong></div>
+      <div class="metric-wide"><small>Foto disponível</small><strong id="photoInfo">—</strong></div>
+      <div class="metric-wide"><small>Último método de captura</small><strong id="captureMethodInfo">—</strong></div>
     </section>
 
     <section class="controls">
@@ -69,6 +72,10 @@
       <label class="toggle">
         <input id="autoOcrToggle" type="checkbox" checked />
         <span>Analisar OCR automaticamente após a captura</span>
+      </label>
+      <label class="toggle">
+        <input id="highResToggle" type="checkbox" checked />
+        <span>Preferir foto real em alta resolução</span>
       </label>
     </section>
 
@@ -136,6 +143,8 @@
       <summary>Ajustes da câmera</summary>
       <div class="setting-row"><span>Foco contínuo</span><strong id="continuousFocusInfo">—</strong></div>
       <div class="setting-row"><span>Toque para focar</span><strong id="tapFocusInfo">aguardando câmera</strong></div>
+      <div class="setting-row"><span>Captura fotográfica</span><strong id="photoCaptureInfo">aguardando câmera</strong></div>
+      <div class="setting-row"><span>Resolução fotográfica máx.</span><strong id="photoMaxInfo">—</strong></div>
       <label id="zoomWrap" hidden>
         Zoom
         <input id="zoomSlider" type="range" min="1" max="1" step="0.1" value="1" />
@@ -173,7 +182,7 @@
 
     <section class="notes">
       <h2>Objetivo desta versão</h2>
-      <p>O primeiro alvo é identificar corretamente o <strong>nome da carta</strong>. A moldura usa 45% como padrão. Quando o navegador permitir, toque diretamente sobre o nome ou o rodapé para solicitar foco naquele ponto. Se o rodapé também fornecer set + collector number, o scanner tenta resolver a impressão exata no Scryfall. Caso contrário, mostra a carta pelo nome e marca a impressão como pendente.</p>
+      <p>Esta versão testa a captura fotográfica real. Quando <code>ImageCapture.takePhoto()</code> estiver disponível, o detector continua usando o vídeo leve, mas a imagem enviada ao OCR vem de uma exposição fotográfica em resolução maior. Se o recurso não existir ou falhar, o scanner usa automaticamente o frame de vídeo anterior.</p>
     </section>
 
     <canvas id="analysisCanvas" width="240" height="336" hidden></canvas>
@@ -182,6 +191,6 @@
     <canvas id="footerOcrCanvas" width="1800" height="300" hidden></canvas>
   </main>
 
-  <script src="app.js?v=033"></script>
+  <script src="app.js?v=034"></script>
 </body>
 </html>

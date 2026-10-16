@@ -4,10 +4,12 @@
 const $ = id => document.getElementById(id);
 const video=$('video'), shell=$('cameraShell'), frame=$('cardFrame');
 const startBtn=$('startBtn'), manualBtn=$('manualBtn'), refocusBtn=$('refocusBtn'), reanalyzeBtn=$('reanalyzeBtn');
-const autoToggle=$('autoToggle'), autoOcrToggle=$('autoOcrToggle'), statusEl=$('status'), countEl=$('count');
+const autoToggle=$('autoToggle'), autoOcrToggle=$('autoOcrToggle'), highResToggle=$('highResToggle'), statusEl=$('status'), countEl=$('count');
 const preview=$('preview'), previewEmpty=$('previewEmpty'), qualityEl=$('quality');
 const cameraStatus=$('cameraStatus'),cameraDot=$('cameraDot'),focusStatus=$('focusStatus'),focusDot=$('focusDot'),ocrStatus=$('ocrStatus'),ocrDot=$('ocrDot');
+const photoStatus=$('photoStatus'),photoDot=$('photoDot');
 const streamInfo=$('streamInfo'),continuousFocusInfo=$('continuousFocusInfo');
+const photoInfo=$('photoInfo'),captureMethodInfo=$('captureMethodInfo'),photoCaptureInfo=$('photoCaptureInfo'),photoMaxInfo=$('photoMaxInfo');
 const tapFocusInfo=$('tapFocusInfo'),focusRing=$('focusRing'),tapHint=$('tapHint');
 const cardStateEl=$('cardState'),confidenceEl=$('confidence'),ratioEl=$('ratio'),stabilityEl=$('stability'),bottomSharpnessEl=$('bottomSharpness');
 const zoomWrap=$('zoomWrap'),zoomSlider=$('zoomSlider'),zoomValue=$('zoomValue');
@@ -26,6 +28,7 @@ const nameOcrCanvas=$('nameOcrCanvas'),nctx=nameOcrCanvas.getContext('2d',{willR
 const footerOcrCanvas=$('footerOcrCanvas'),fctx=footerOcrCanvas.getContext('2d',{willReadFrequently:true});
 
 let stream=null,track=null,capabilities={},running=false,lastAnalyzeAt=0,captureCount=0,stableFrames=0,sharpFrames=0,locked=false,unlockFrames=0,prevEdges=null,audioCtx=null;
+let imageCapture=null,photoCapabilities=null,captureBusy=false;
 let tapPointSupported=false, singleShotFocusSupported=false, continuousFocusSupported=false;
 let tesseractWorker=null,ocrBusy=false,lastCaptured=false;
 const IDEAL_RATIO=63/88;
@@ -53,7 +56,19 @@ frameSizeSlider.addEventListener('input',applyFrameSize);
 
 function frameRectInShell(){const sr=shell.getBoundingClientRect(),fr=frame.getBoundingClientRect();return{x:fr.left-sr.left,y:fr.top-sr.top,width:fr.width,height:fr.height}}
 function displayedVideoGeometry(){const vw=video.videoWidth,vh=video.videoHeight,cw=shell.clientWidth,ch=shell.clientHeight,scale=Math.max(cw/vw,ch/vh);return{scale,offsetX:(cw-vw*scale)/2,offsetY:(ch-vh*scale)/2}}
-function sourceRectFromShellRect(r){const vw=video.videoWidth,vh=video.videoHeight,g=displayedVideoGeometry();let sx=(r.x-g.offsetX)/g.scale,sy=(r.y-g.offsetY)/g.scale,sw=r.width/g.scale,sh=r.height/g.scale;sx=Math.max(0,Math.min(vw-1,sx));sy=Math.max(0,Math.min(vh-1,sy));sw=Math.max(1,Math.min(vw-sx,sw));sh=Math.max(1,Math.min(vh-sy,sh));return{sx,sy,sw,sh}}
+function sourceRectForDimensions(r,sourceW,sourceH){
+  const cw=shell.clientWidth,ch=shell.clientHeight;
+  const scale=Math.max(cw/sourceW,ch/sourceH);
+  const offsetX=(cw-sourceW*scale)/2;
+  const offsetY=(ch-sourceH*scale)/2;
+  let sx=(r.x-offsetX)/scale,sy=(r.y-offsetY)/scale,sw=r.width/scale,sh=r.height/scale;
+  sx=Math.max(0,Math.min(sourceW-1,sx));
+  sy=Math.max(0,Math.min(sourceH-1,sy));
+  sw=Math.max(1,Math.min(sourceW-sx,sw));
+  sh=Math.max(1,Math.min(sourceH-sy,sh));
+  return{sx,sy,sw,sh};
+}
+function sourceRectFromShellRect(r){return sourceRectForDimensions(r,video.videoWidth,video.videoHeight)}
 function expandedFrameRect(){const r=frameRectInShell(),mx=r.width*.16,my=r.height*.12,x=Math.max(0,r.x-mx),y=Math.max(0,r.y-my);return{x,y,width:Math.min(shell.clientWidth,r.x+r.width+mx)-x,height:Math.min(shell.clientHeight,r.y+r.height+my)-y}}
 function getGrayFrame(){if(!video.videoWidth||!video.videoHeight)return null;const r=expandedFrameRect(),s=sourceRectFromShellRect(r);actx.drawImage(video,s.sx,s.sy,s.sw,s.sh,0,0,analysisCanvas.width,analysisCanvas.height);const data=actx.getImageData(0,0,analysisCanvas.width,analysisCanvas.height).data,gray=new Float32Array(analysisCanvas.width*analysisCanvas.height);for(let i=0,j=0;i<data.length;i+=4,j++)gray[j]=data[i]*.299+data[i+1]*.587+data[i+2]*.114;return gray}
 function verticalEdgeScore(g,x,y0,y1){const w=analysisCanvas.width;let sum=0,n=0;x=Math.max(2,Math.min(w-3,x));for(let y=y0;y<=y1;y+=2){sum+=Math.abs(g[y*w+x-2]-g[y*w+x+2]);n++}return n?sum/n:0}
@@ -66,8 +81,144 @@ function edgeMovement(e){if(!prevEdges)return 999;return(Math.abs(e.left.pos-pre
 async function beep(freq=920){try{audioCtx??=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')await audioCtx.resume();const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.frequency.value=freq;g.gain.setValueAtTime(.07,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+.10);o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+.11)}catch(_){}}
 function cropCapture(){return sourceRectFromShellRect(frameRectInShell())}
 
-function resetRecognition(){recognitionEmpty.hidden=false;recognitionResult.hidden=true;recognitionBadge.textContent='aguardando';scryfallImage.hidden=true;scryfallImage.removeAttribute('src')}
-async function capture(){if(!running||!video.videoWidth)return;const s=cropCapture();cctx.clearRect(0,0,captureCanvas.width,captureCanvas.height);cctx.drawImage(video,s.sx,s.sy,s.sw,s.sh,0,0,captureCanvas.width,captureCanvas.height);preview.src=captureCanvas.toDataURL('image/jpeg',.95);preview.hidden=false;previewEmpty.hidden=true;captureCount++;countEl.textContent=captureCount;qualityEl.textContent='captura 1260 × 1760';lastCaptured=true;resetRecognition();locked=true;unlockFrames=0;stableFrames=0;sharpFrames=0;frame.classList.remove('detected','ready');frame.classList.add('captured');setTimeout(()=>frame.classList.remove('captured'),320);setStatus('Capturado — retire a carta');await beep();if(autoOcrToggle.checked)setTimeout(()=>analyzeCapturedCard(),80)}
+function resetRecognition(){
+  recognitionEmpty.hidden=false;
+  recognitionResult.hidden=true;
+  recognitionBadge.textContent='aguardando';
+  scryfallImage.hidden=true;
+  scryfallImage.removeAttribute('src');
+}
+
+function prepareCaptureCanvas(sourceCropW,sourceCropH){
+  // Preserve real detail without creating excessively large canvases on mobile.
+  const maxW=2100,maxH=Math.round(maxW*88/63);
+  let outW=Math.max(720,Math.round(sourceCropW));
+  let outH=Math.max(1006,Math.round(sourceCropH));
+  const scale=Math.min(1,maxW/outW,maxH/outH);
+  outW=Math.max(720,Math.round(outW*scale));
+  outH=Math.max(1006,Math.round(outH*scale));
+  captureCanvas.width=outW;
+  captureCanvas.height=outH;
+}
+
+async function drawVideoFrameCapture(){
+  const s=cropCapture();
+  prepareCaptureCanvas(s.sw,s.sh);
+  cctx.clearRect(0,0,captureCanvas.width,captureCanvas.height);
+  cctx.drawImage(video,s.sx,s.sy,s.sw,s.sh,0,0,captureCanvas.width,captureCanvas.height);
+  return{
+    method:'frame de vídeo',
+    sourceWidth:video.videoWidth,
+    sourceHeight:video.videoHeight,
+    cropWidth:Math.round(s.sw),
+    cropHeight:Math.round(s.sh)
+  };
+}
+
+async function drawHighResPhotoCapture(){
+  if(!imageCapture)throw new Error('ImageCapture indisponível');
+
+  const settings={};
+  if(photoCapabilities?.imageWidth?.max) settings.imageWidth=photoCapabilities.imageWidth.max;
+  if(photoCapabilities?.imageHeight?.max) settings.imageHeight=photoCapabilities.imageHeight.max;
+  if(Array.isArray(photoCapabilities?.fillLightMode) && photoCapabilities.fillLightMode.includes('off')){
+    settings.fillLightMode='off';
+  }
+
+  setStatus('Fotografando em alta resolução — mantenha a carta parada…');
+
+  let blob;
+  try{
+    blob=await imageCapture.takePhoto(settings);
+  }catch(firstErr){
+    console.warn('takePhoto com resolução solicitada falhou; tentando padrão',firstErr);
+    blob=await imageCapture.takePhoto();
+  }
+
+  let bitmap;
+  try{
+    bitmap=await createImageBitmap(blob,{imageOrientation:'from-image'});
+  }catch(_){
+    bitmap=await createImageBitmap(blob);
+  }
+
+  try{
+    const r=frameRectInShell();
+    const s=sourceRectForDimensions(r,bitmap.width,bitmap.height);
+
+    prepareCaptureCanvas(s.sw,s.sh);
+    cctx.clearRect(0,0,captureCanvas.width,captureCanvas.height);
+    cctx.drawImage(bitmap,s.sx,s.sy,s.sw,s.sh,0,0,captureCanvas.width,captureCanvas.height);
+
+    return{
+      method:'foto real (takePhoto)',
+      sourceWidth:bitmap.width,
+      sourceHeight:bitmap.height,
+      cropWidth:Math.round(s.sw),
+      cropHeight:Math.round(s.sh)
+    };
+  }finally{
+    try{bitmap.close()}catch(_){}
+  }
+}
+
+async function capture(){
+  if(!running||!video.videoWidth||captureBusy)return;
+  captureBusy=true;
+
+  // Lock immediately so the detector cannot start another capture while takePhoto is running.
+  locked=true;
+  unlockFrames=0;
+  stableFrames=0;
+  sharpFrames=0;
+  frame.classList.remove('detected','ready');
+  frame.classList.add('captured');
+  setTimeout(()=>frame.classList.remove('captured'),320);
+
+  let result;
+  try{
+    if(highResToggle.checked && imageCapture){
+      try{
+        result=await drawHighResPhotoCapture();
+      }catch(err){
+        console.warn('Foto real falhou; usando frame do vídeo',err);
+        photoStatus.textContent='Foto real falhou — fallback para vídeo';
+        setDot(photoDot,'warn');
+        result=await drawVideoFrameCapture();
+        result.method+=' (fallback)';
+      }
+    }else{
+      result=await drawVideoFrameCapture();
+    }
+
+    preview.src=captureCanvas.toDataURL('image/jpeg',.96);
+    preview.hidden=false;
+    previewEmpty.hidden=true;
+
+    captureCount++;
+    countEl.textContent=captureCount;
+
+    qualityEl.textContent=`${result.method} · ${captureCanvas.width} × ${captureCanvas.height}`;
+    captureMethodInfo.textContent=
+      `${result.method} · fonte ${result.sourceWidth}×${result.sourceHeight} · recorte ~${result.cropWidth}×${result.cropHeight}`;
+
+    lastCaptured=true;
+    resetRecognition();
+
+    setStatus('Capturado — retire a carta');
+    await beep();
+
+    if(autoOcrToggle.checked){
+      setTimeout(()=>analyzeCapturedCard(),120);
+    }
+  }catch(err){
+    console.error('Falha total na captura',err);
+    setStatus('Falha na captura — tente novamente');
+    locked=false;
+  }finally{
+    captureBusy=false;
+  }
+}
 
 function updateUI(r,movement){confidenceEl.textContent=r.confidence+'%';ratioEl.textContent=r.ratio?r.ratio.toFixed(3):'—';bottomSharpnessEl.textContent=r.sharpness?r.sharpness.toFixed(1):'—';if(!r.detected){cardStateEl.textContent='não detectada';stabilityEl.textContent='—';frame.classList.remove('detected','ready');stableFrames=0;sharpFrames=0;if(!locked)setStatus('Nenhuma carta detectada');return}cardStateEl.textContent='provável carta';frame.classList.add('detected');if(movement<Number(stableThreshold.value))stableFrames++;else stableFrames=0;if(r.sharpness>=Number(sharpnessThreshold.value))sharpFrames++;else sharpFrames=0;stabilityEl.textContent=`${Math.min(stableFrames,5)}/5`;if(stableFrames>=2&&sharpFrames<2){setStatus('Carta estável — aguardando foco na faixa inferior');frame.classList.remove('ready')}else if(stableFrames>=2)setStatus('Carta detectada — segure');if(stableFrames>=6&&sharpFrames>=4){frame.classList.add('ready');setStatus('Carta estável e nítida')}else frame.classList.remove('ready')}
 function analyze(now){if(!running)return;requestAnimationFrame(analyze);if(now-lastAnalyzeAt<250)return;lastAnalyzeAt=now;const g=getGrayFrame();if(!g)return;const r=detectCard(g),movement=r.detected?edgeMovement(r.edges):999;if(locked){if(!r.detected||movement>12)unlockFrames++;else unlockFrames=0;if(unlockFrames>=2){locked=false;unlockFrames=0;prevEdges=null;setStatus('Pronto para a próxima carta')}confidenceEl.textContent=r.confidence+'%';ratioEl.textContent=r.ratio?r.ratio.toFixed(3):'—';bottomSharpnessEl.textContent=r.sharpness?r.sharpness.toFixed(1):'—';cardStateEl.textContent=r.detected?'retire a carta':'trocando';stabilityEl.textContent='bloqueada';prevEdges=r.detected?r.edges:null;return}updateUI(r,movement);if(r.detected&&autoToggle.checked&&stableFrames>=6&&sharpFrames>=4)capture();prevEdges=r.detected?r.edges:null}
@@ -256,7 +407,96 @@ shell.addEventListener('pointerup',event=>{
 zoomSlider.addEventListener('input',async()=>{if(!track)return;const z=Number(zoomSlider.value);zoomValue.value=z.toFixed(1)+'×';try{await track.applyConstraints({advanced:[{zoom:z}]});updateStreamInfo()}catch(e){console.warn(e)}})
 refocusBtn.addEventListener('click',async()=>{setStatus('Reaplicando foco…');await applyBestFocus();setStatus('Foco reaplicado — alinhe a carta')})
 
-async function startCamera(){setStatus('Solicitando câmera…');startBtn.disabled=true;try{audioCtx??=new(window.AudioContext||window.webkitAudioContext)();stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{min:1280,ideal:1920,max:3840},height:{min:720,ideal:1080,max:2160},frameRate:{ideal:30,max:30}}});track=stream.getVideoTracks()[0];video.srcObject=stream;await video.play();running=true;manualBtn.disabled=false;startBtn.textContent='Câmera ativa';cameraStatus.textContent='Câmera ativa';setDot(cameraDot,'ok');updateStreamInfo();await applyBestFocus();setStatus('Procure uma carta dentro da moldura');requestAnimationFrame(analyze)}catch(err){console.error(err);startBtn.disabled=false;cameraStatus.textContent='Falha ao abrir câmera';setDot(cameraDot,'error');setStatus('Não foi possível abrir a câmera');alert('Falha ao abrir a câmera:\n\n'+(err?.name||'')+'\n'+(err?.message||err))}}
+
+async function setupImageCapture(){
+  imageCapture=null;
+  photoCapabilities=null;
+
+  if(!track || !('ImageCapture' in window)){
+    photoStatus.textContent='Foto real: não suportada neste navegador';
+    photoCaptureInfo.textContent='indisponível';
+    photoMaxInfo.textContent='—';
+    photoInfo.textContent='somente frame de vídeo';
+    setDot(photoDot,'warn');
+    return;
+  }
+
+  try{
+    imageCapture=new ImageCapture(track);
+
+    try{
+      photoCapabilities=await imageCapture.getPhotoCapabilities();
+    }catch(capErr){
+      console.warn('getPhotoCapabilities indisponível',capErr);
+      photoCapabilities=null;
+    }
+
+    let maxText='disponível';
+    if(photoCapabilities?.imageWidth?.max && photoCapabilities?.imageHeight?.max){
+      maxText=`até ${Math.round(photoCapabilities.imageWidth.max)} × ${Math.round(photoCapabilities.imageHeight.max)}`;
+      photoMaxInfo.textContent=`${Math.round(photoCapabilities.imageWidth.max)} × ${Math.round(photoCapabilities.imageHeight.max)}`;
+    }else{
+      photoMaxInfo.textContent='não informada';
+    }
+
+    photoStatus.textContent='Foto real: disponível';
+    photoCaptureInfo.textContent='ImageCapture.takePhoto()';
+    photoInfo.textContent=maxText;
+    setDot(photoDot,'ok');
+  }catch(err){
+    console.warn('ImageCapture não pôde ser inicializado',err);
+    imageCapture=null;
+    photoStatus.textContent='Foto real: falhou ao inicializar';
+    photoCaptureInfo.textContent='fallback para vídeo';
+    photoMaxInfo.textContent='—';
+    photoInfo.textContent='somente frame de vídeo';
+    setDot(photoDot,'warn');
+  }
+}
+
+async function startCamera(){
+  setStatus('Solicitando câmera…');
+  startBtn.disabled=true;
+
+  try{
+    audioCtx??=new(window.AudioContext||window.webkitAudioContext)();
+
+    stream=await navigator.mediaDevices.getUserMedia({
+      audio:false,
+      video:{
+        facingMode:{ideal:'environment'},
+        width:{min:1280,ideal:1920,max:3840},
+        height:{min:720,ideal:1080,max:2160},
+        frameRate:{ideal:30,max:30}
+      }
+    });
+
+    track=stream.getVideoTracks()[0];
+    video.srcObject=stream;
+    await video.play();
+
+    running=true;
+    manualBtn.disabled=false;
+    startBtn.textContent='Câmera ativa';
+    cameraStatus.textContent='Câmera ativa';
+    setDot(cameraDot,'ok');
+
+    updateStreamInfo();
+    await applyBestFocus();
+    await setupImageCapture();
+
+    setStatus('Procure uma carta dentro da moldura');
+    requestAnimationFrame(analyze);
+
+  }catch(err){
+    console.error(err);
+    startBtn.disabled=false;
+    cameraStatus.textContent='Falha ao abrir câmera';
+    setDot(cameraDot,'error');
+    setStatus('Não foi possível abrir a câmera');
+    alert('Falha ao abrir a câmera:\n\n'+(err?.name||'')+'\n'+(err?.message||err));
+  }
+}
 
 function loadScript(src){return new Promise((resolve,reject)=>{if(window.Tesseract)return resolve();const old=document.querySelector('script[data-tesseract]');if(old){old.addEventListener('load',resolve,{once:true});old.addEventListener('error',reject,{once:true});return}const s=document.createElement('script');s.src=src;s.async=true;s.dataset.tesseract='1';s.onload=resolve;s.onerror=()=>reject(new Error('Falha ao carregar Tesseract.js'));document.head.appendChild(s)})}
 

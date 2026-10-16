@@ -1,4 +1,4 @@
-# Acervo MTG — Scanner v0.3.3
+# Acervo MTG — Scanner v0.3.4
 
 Versão de ajuste óptico do scanner.
 
@@ -75,7 +75,7 @@ Substitua:
 - manifest.webmanifest
 - README.md
 
-Confirme `Scanner v0.3.3`.
+Confirme `Scanner v0.3.4`.
 
 ## Dependências externas
 
@@ -83,7 +83,7 @@ Tesseract.js v5 é carregado sob demanda via jsDelivr.
 Scryfall é consultado diretamente pelo navegador.
 
 
-## Ajuste v0.3.3
+## Ajuste v0.3.4
 
 O tamanho mínimo da moldura foi reduzido de 48% para 35%.
 
@@ -94,7 +94,7 @@ Faixa atual:
 Isso permite afastar mais o celular da carta para buscar uma distância de foco melhor.
 
 
-## Ajuste v0.3.3 — toque para focar
+## Ajuste v0.3.4 — toque para focar
 
 A moldura padrão passa a ser 45%.
 
@@ -114,3 +114,44 @@ O scanner consulta as capacidades expostas pelo navegador:
 Um quadrado aparece no ponto tocado para confirmar a interação.
 
 Em `Ajustes da câmera`, a linha `Toque para focar` informa o nível de suporte disponível no aparelho.
+
+
+## Ajuste v0.3.4 — fotografia real
+
+Esta versão testa `ImageCapture.takePhoto()`.
+
+### Novo fluxo
+
+- O vídeo continua sendo usado somente para:
+  - preview;
+  - detecção da carta;
+  - estabilidade;
+  - nitidez preliminar.
+- Quando a carta está pronta para captura:
+  - se `ImageCapture` estiver disponível, o scanner faz uma exposição fotográfica;
+  - tenta solicitar a maior resolução informada em `getPhotoCapabilities()`;
+  - recorta da fotografia a região correspondente à moldura;
+  - envia esse recorte ao OCR.
+- Se `ImageCapture` não existir ou `takePhoto()` falhar:
+  - o sistema volta automaticamente ao frame de vídeo.
+
+### Informações na tela
+
+A página mostra:
+- resolução do stream;
+- resolução fotográfica máxima anunciada;
+- método usado na última captura;
+- resolução da fonte e do recorte aproximado.
+
+### Como comparar
+
+O dado decisivo é comparar o rodapé:
+
+1. mantenha `Preferir foto real em alta resolução` ligado;
+2. capture uma carta;
+3. anote o método exibido;
+4. observe o collector number / set / idioma;
+5. desligue a opção e capture a mesma carta via frame de vídeo;
+6. compare visualmente e pelo OCR.
+
+Se a fotografia real ainda ficar muito abaixo do app nativo da câmera, o próximo passo recomendado é encerrar o protótipo web e migrar para Android CameraX.
