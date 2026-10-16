@@ -40,3 +40,46 @@ button{min-height:48px;border:0;border-radius:12px;padding:0 14px;font-weight:75
   line-height:1.4;
   opacity:.62;
 }
+
+.focus-ring{
+  position:absolute;
+  width:58px;
+  height:58px;
+  transform:translate(-50%,-50%);
+  pointer-events:none;
+  z-index:12;
+  opacity:1;
+}
+.focus-ring span{
+  position:absolute;
+  width:18px;
+  height:18px;
+  border-color:#fff;
+  border-style:solid;
+}
+.focus-ring span:nth-child(1){left:0;top:0;border-width:2px 0 0 2px}
+.focus-ring span:nth-child(2){right:0;top:0;border-width:2px 2px 0 0}
+.focus-ring span:nth-child(3){left:0;bottom:0;border-width:0 0 2px 2px}
+.focus-ring span:nth-child(4){right:0;bottom:0;border-width:0 2px 2px 0}
+.focus-ring.pulse{animation:focusPulse .65s ease}
+@keyframes focusPulse{
+  0%{transform:translate(-50%,-50%) scale(1.35);opacity:.35}
+  45%{transform:translate(-50%,-50%) scale(.92);opacity:1}
+  100%{transform:translate(-50%,-50%) scale(1);opacity:.95}
+}
+.tap-hint{
+  position:absolute;
+  top:12px;
+  left:50%;
+  transform:translateX(-50%);
+  z-index:11;
+  pointer-events:none;
+  padding:5px 8px;
+  border-radius:999px;
+  background:rgba(11,13,16,.64);
+  font-size:9px;
+  font-weight:700;
+  letter-spacing:.09em;
+  opacity:.75;
+  white-space:nowrap;
+}

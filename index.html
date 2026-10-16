@@ -4,17 +4,17 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#101318" />
-  <title>Acervo MTG — Scanner v0.3.2</title>
-  <link rel="manifest" href="manifest.webmanifest?v=032" />
-  <link rel="stylesheet" href="styles.css?v=032" />
+  <title>Acervo MTG — Scanner v0.3.3</title>
+  <link rel="manifest" href="manifest.webmanifest?v=033" />
+  <link rel="stylesheet" href="styles.css?v=033" />
 </head>
 <body>
   <main class="app">
     <header>
       <div>
         <p class="eyebrow">ACERVO MTG</p>
-        <h1>Scanner v0.3.2</h1>
-        <p class="sub">OCR + enquadramento ajustável</p>
+        <h1>Scanner v0.3.3</h1>
+        <p class="sub">OCR + toque para focar</p>
       </div>
       <div class="counter">
         <span id="count">0</span>
@@ -42,6 +42,11 @@
         <div class="frame-label">ALINHE A CARTA</div>
       </div>
 
+      <div class="focus-ring" id="focusRing" hidden>
+        <span></span><span></span><span></span><span></span>
+      </div>
+
+      <div class="tap-hint" id="tapHint">TOQUE NA CARTA PARA FOCAR</div>
       <div class="status-pill" id="status">Toque em “Iniciar câmera”</div>
     </section>
 
@@ -130,6 +135,7 @@
     <details class="camera-settings">
       <summary>Ajustes da câmera</summary>
       <div class="setting-row"><span>Foco contínuo</span><strong id="continuousFocusInfo">—</strong></div>
+      <div class="setting-row"><span>Toque para focar</span><strong id="tapFocusInfo">aguardando câmera</strong></div>
       <label id="zoomWrap" hidden>
         Zoom
         <input id="zoomSlider" type="range" min="1" max="1" step="0.1" value="1" />
@@ -137,8 +143,8 @@
       </label>
       <label>
         Tamanho da moldura
-        <input id="frameSizeSlider" type="range" min="35" max="76" step="1" value="50" />
-        <output id="frameSizeValue">50%</output>
+        <input id="frameSizeSlider" type="range" min="35" max="76" step="1" value="45" />
+        <output id="frameSizeValue">45%</output>
       </label>
       <p class="helper">Afaste o celular até o texto ficar nítido e ajuste esta moldura para coincidir com a carta.</p>
 
@@ -167,7 +173,7 @@
 
     <section class="notes">
       <h2>Objetivo desta versão</h2>
-      <p>O primeiro alvo é identificar corretamente o <strong>nome da carta</strong>. A moldura agora é menor por padrão para permitir trabalhar mais longe da carta, onde o foco do celular tende a ser melhor. Se o rodapé também fornecer set + collector number, o scanner tenta resolver a impressão exata no Scryfall. Caso contrário, mostra a carta pelo nome e marca a impressão como pendente.</p>
+      <p>O primeiro alvo é identificar corretamente o <strong>nome da carta</strong>. A moldura usa 45% como padrão. Quando o navegador permitir, toque diretamente sobre o nome ou o rodapé para solicitar foco naquele ponto. Se o rodapé também fornecer set + collector number, o scanner tenta resolver a impressão exata no Scryfall. Caso contrário, mostra a carta pelo nome e marca a impressão como pendente.</p>
     </section>
 
     <canvas id="analysisCanvas" width="240" height="336" hidden></canvas>
@@ -176,6 +182,6 @@
     <canvas id="footerOcrCanvas" width="1800" height="300" hidden></canvas>
   </main>
 
-  <script src="app.js?v=032"></script>
+  <script src="app.js?v=033"></script>
 </body>
 </html>

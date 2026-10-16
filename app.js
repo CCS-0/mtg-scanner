@@ -8,6 +8,7 @@ const autoToggle=$('autoToggle'), autoOcrToggle=$('autoOcrToggle'), statusEl=$('
 const preview=$('preview'), previewEmpty=$('previewEmpty'), qualityEl=$('quality');
 const cameraStatus=$('cameraStatus'),cameraDot=$('cameraDot'),focusStatus=$('focusStatus'),focusDot=$('focusDot'),ocrStatus=$('ocrStatus'),ocrDot=$('ocrDot');
 const streamInfo=$('streamInfo'),continuousFocusInfo=$('continuousFocusInfo');
+const tapFocusInfo=$('tapFocusInfo'),focusRing=$('focusRing'),tapHint=$('tapHint');
 const cardStateEl=$('cardState'),confidenceEl=$('confidence'),ratioEl=$('ratio'),stabilityEl=$('stability'),bottomSharpnessEl=$('bottomSharpness');
 const zoomWrap=$('zoomWrap'),zoomSlider=$('zoomSlider'),zoomValue=$('zoomValue');
 const frameSizeSlider=$('frameSizeSlider'), frameSizeValue=$('frameSizeValue');
@@ -25,6 +26,7 @@ const nameOcrCanvas=$('nameOcrCanvas'),nctx=nameOcrCanvas.getContext('2d',{willR
 const footerOcrCanvas=$('footerOcrCanvas'),fctx=footerOcrCanvas.getContext('2d',{willReadFrequently:true});
 
 let stream=null,track=null,capabilities={},running=false,lastAnalyzeAt=0,captureCount=0,stableFrames=0,sharpFrames=0,locked=false,unlockFrames=0,prevEdges=null,audioCtx=null;
+let tapPointSupported=false, singleShotFocusSupported=false, continuousFocusSupported=false;
 let tesseractWorker=null,ocrBusy=false,lastCaptured=false;
 const IDEAL_RATIO=63/88;
 
@@ -71,7 +73,186 @@ function updateUI(r,movement){confidenceEl.textContent=r.confidence+'%';ratioEl.
 function analyze(now){if(!running)return;requestAnimationFrame(analyze);if(now-lastAnalyzeAt<250)return;lastAnalyzeAt=now;const g=getGrayFrame();if(!g)return;const r=detectCard(g),movement=r.detected?edgeMovement(r.edges):999;if(locked){if(!r.detected||movement>12)unlockFrames++;else unlockFrames=0;if(unlockFrames>=2){locked=false;unlockFrames=0;prevEdges=null;setStatus('Pronto para a próxima carta')}confidenceEl.textContent=r.confidence+'%';ratioEl.textContent=r.ratio?r.ratio.toFixed(3):'—';bottomSharpnessEl.textContent=r.sharpness?r.sharpness.toFixed(1):'—';cardStateEl.textContent=r.detected?'retire a carta':'trocando';stabilityEl.textContent='bloqueada';prevEdges=r.detected?r.edges:null;return}updateUI(r,movement);if(r.detected&&autoToggle.checked&&stableFrames>=6&&sharpFrames>=4)capture();prevEdges=r.detected?r.edges:null}
 
 function updateStreamInfo(){if(!track)return;const s=track.getSettings?track.getSettings():{};streamInfo.textContent=s.width&&s.height?`${s.width} × ${s.height}${s.frameRate?` · ${Math.round(s.frameRate)} fps`:''}`:'não informado pelo navegador'}
-async function applyBestFocus(){if(!track)return;capabilities=track.getCapabilities?track.getCapabilities():{};try{if(Array.isArray(capabilities.focusMode)&&capabilities.focusMode.includes('continuous')){await track.applyConstraints({advanced:[{focusMode:'continuous'}]});continuousFocusInfo.textContent='disponível e solicitado';focusStatus.textContent='Foco contínuo solicitado';setDot(focusDot,'ok')}else{continuousFocusInfo.textContent='não exposto pelo navegador';focusStatus.textContent='Foco automático do aparelho';setDot(focusDot,'warn')}}catch(e){continuousFocusInfo.textContent='não aplicado';focusStatus.textContent='Foco automático do aparelho';setDot(focusDot,'warn')}if(capabilities.zoom&&typeof capabilities.zoom.min==='number'){zoomWrap.hidden=false;zoomSlider.min=capabilities.zoom.min;zoomSlider.max=capabilities.zoom.max;zoomSlider.step=capabilities.zoom.step||.1;const s=track.getSettings?track.getSettings():{},cur=typeof s.zoom==='number'?s.zoom:capabilities.zoom.min;zoomSlider.value=cur;zoomValue.value=Number(cur).toFixed(1)+'×'}else zoomWrap.hidden=true;refocusBtn.disabled=false;updateStreamInfo()}
+async function applyBestFocus(){
+  if(!track)return;
+
+  capabilities=track.getCapabilities?track.getCapabilities():{};
+  const supported=navigator.mediaDevices.getSupportedConstraints
+    ? navigator.mediaDevices.getSupportedConstraints()
+    : {};
+
+  const focusModes=Array.isArray(capabilities.focusMode)?capabilities.focusMode:[];
+  continuousFocusSupported=focusModes.includes('continuous');
+  singleShotFocusSupported=focusModes.includes('single-shot');
+  tapPointSupported=Boolean(supported.pointsOfInterest) && (singleShotFocusSupported || continuousFocusSupported);
+
+  try{
+    if(continuousFocusSupported){
+      await track.applyConstraints({advanced:[{focusMode:'continuous'}]});
+      continuousFocusInfo.textContent='disponível e solicitado';
+      focusStatus.textContent='Foco contínuo solicitado';
+      setDot(focusDot,'ok');
+    }else if(singleShotFocusSupported){
+      continuousFocusInfo.textContent='somente foco pontual';
+      focusStatus.textContent='Foco por disparo disponível';
+      setDot(focusDot,'warn');
+    }else{
+      continuousFocusInfo.textContent='não exposto pelo navegador';
+      focusStatus.textContent='Foco automático do aparelho';
+      setDot(focusDot,'warn');
+    }
+  }catch(e){
+    console.warn('Falha ao aplicar foco automático',e);
+    continuousFocusInfo.textContent='não aplicado';
+    focusStatus.textContent='Foco automático do aparelho';
+    setDot(focusDot,'warn');
+  }
+
+  if(tapPointSupported){
+    tapFocusInfo.textContent='ponto específico disponível';
+    tapHint.textContent='TOQUE NA CARTA PARA FOCAR';
+  }else if(singleShotFocusSupported){
+    tapFocusInfo.textContent='refoco disponível, sem ponto';
+    tapHint.textContent='TOQUE PARA REFOCAR';
+  }else{
+    tapFocusInfo.textContent='não exposto pelo navegador';
+    tapHint.textContent='FOCO AUTOMÁTICO';
+  }
+
+  if(capabilities.zoom&&typeof capabilities.zoom.min==='number'){
+    zoomWrap.hidden=false;
+    zoomSlider.min=capabilities.zoom.min;
+    zoomSlider.max=capabilities.zoom.max;
+    zoomSlider.step=capabilities.zoom.step||.1;
+    const s=track.getSettings?track.getSettings():{},cur=typeof s.zoom==='number'?s.zoom:capabilities.zoom.min;
+    zoomSlider.value=cur;
+    zoomValue.value=Number(cur).toFixed(1)+'×';
+  }else{
+    zoomWrap.hidden=true;
+  }
+
+  refocusBtn.disabled=false;
+  updateStreamInfo();
+}
+
+function showFocusRing(clientX,clientY){
+  const rect=shell.getBoundingClientRect();
+  focusRing.style.left=(clientX-rect.left)+'px';
+  focusRing.style.top=(clientY-rect.top)+'px';
+  focusRing.hidden=false;
+  focusRing.classList.remove('pulse');
+  void focusRing.offsetWidth;
+  focusRing.classList.add('pulse');
+  clearTimeout(showFocusRing._timer);
+  showFocusRing._timer=setTimeout(()=>{focusRing.hidden=true},1500);
+}
+
+function tapToVideoPoint(clientX,clientY){
+  const rect=shell.getBoundingClientRect();
+  const localX=clientX-rect.left;
+  const localY=clientY-rect.top;
+  const g=displayedVideoGeometry();
+
+  const sourceX=(localX-g.offsetX)/g.scale;
+  const sourceY=(localY-g.offsetY)/g.scale;
+
+  return{
+    x:Math.max(0,Math.min(1,sourceX/video.videoWidth)),
+    y:Math.max(0,Math.min(1,sourceY/video.videoHeight))
+  };
+}
+
+async function requestTapFocus(clientX,clientY){
+  if(!running||!track)return;
+
+  showFocusRing(clientX,clientY);
+  const point=tapToVideoPoint(clientX,clientY);
+
+  try{
+    if(tapPointSupported){
+      const mode=singleShotFocusSupported?'single-shot':'continuous';
+      const request={
+        pointsOfInterest:[point],
+        focusMode:mode
+      };
+
+      // If supported, let exposure use the same metering point too.
+      if(Array.isArray(capabilities.exposureMode)){
+        if(capabilities.exposureMode.includes('single-shot')){
+          request.exposureMode='single-shot';
+        }else if(capabilities.exposureMode.includes('continuous')){
+          request.exposureMode='continuous';
+        }
+      }
+
+      setStatus('Focando no ponto tocado…');
+      focusStatus.textContent='Foco solicitado no ponto tocado';
+      await track.applyConstraints({advanced:[request]});
+
+      // After the one-shot sweep, keep monitoring focus while retaining the point.
+      if(singleShotFocusSupported && continuousFocusSupported){
+        setTimeout(async()=>{
+          try{
+            await track.applyConstraints({
+              advanced:[{
+                pointsOfInterest:[point],
+                focusMode:'continuous'
+              }]
+            });
+            focusStatus.textContent='Foco contínuo no ponto selecionado';
+          }catch(_){}
+        },900);
+      }else{
+        setTimeout(()=>{focusStatus.textContent='Foco aplicado'},650);
+      }
+
+      setTimeout(()=>setStatus('Segure a carta enquanto o foco estabiliza'),450);
+      return;
+    }
+
+    if(singleShotFocusSupported){
+      setStatus('Refocando…');
+      focusStatus.textContent='Refoco solicitado';
+      await track.applyConstraints({advanced:[{focusMode:'single-shot'}]});
+
+      if(continuousFocusSupported){
+        setTimeout(async()=>{
+          try{
+            await track.applyConstraints({advanced:[{focusMode:'continuous'}]});
+          }catch(_){}
+        },900);
+      }
+
+      setTimeout(()=>setStatus('Segure a carta enquanto o foco estabiliza'),450);
+      return;
+    }
+
+    setStatus('Este navegador não expõe controle de foco por toque');
+    focusStatus.textContent='Foco controlado automaticamente pelo aparelho';
+
+  }catch(err){
+    console.warn('Tap-to-focus não pôde ser aplicado',err);
+
+    // Fallback: ask for a one-shot sweep even if the point itself was rejected.
+    if(singleShotFocusSupported){
+      try{
+        await track.applyConstraints({advanced:[{focusMode:'single-shot'}]});
+        setStatus('Ponto não aceito — refoco automático solicitado');
+        focusStatus.textContent='Refoco automático solicitado';
+        return;
+      }catch(_){}
+    }
+
+    setStatus('Controle de foco por toque não disponível');
+    focusStatus.textContent='Foco automático do aparelho';
+  }
+}
+
+shell.addEventListener('pointerup',event=>{
+  if(!running)return;
+  requestTapFocus(event.clientX,event.clientY);
+});
+
 zoomSlider.addEventListener('input',async()=>{if(!track)return;const z=Number(zoomSlider.value);zoomValue.value=z.toFixed(1)+'×';try{await track.applyConstraints({advanced:[{zoom:z}]});updateStreamInfo()}catch(e){console.warn(e)}})
 refocusBtn.addEventListener('click',async()=>{setStatus('Reaplicando foco…');await applyBestFocus();setStatus('Foco reaplicado — alinhe a carta')})
 

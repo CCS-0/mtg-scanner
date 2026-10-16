@@ -1,4 +1,4 @@
-# Acervo MTG — Scanner v0.3.2
+# Acervo MTG — Scanner v0.3.3
 
 Versão de ajuste óptico do scanner.
 
@@ -75,7 +75,7 @@ Substitua:
 - manifest.webmanifest
 - README.md
 
-Confirme `Scanner v0.3.2`.
+Confirme `Scanner v0.3.3`.
 
 ## Dependências externas
 
@@ -83,7 +83,7 @@ Tesseract.js v5 é carregado sob demanda via jsDelivr.
 Scryfall é consultado diretamente pelo navegador.
 
 
-## Ajuste v0.3.2
+## Ajuste v0.3.3
 
 O tamanho mínimo da moldura foi reduzido de 48% para 35%.
 
@@ -92,3 +92,25 @@ Faixa atual:
 - máximo: 76%
 
 Isso permite afastar mais o celular da carta para buscar uma distância de foco melhor.
+
+
+## Ajuste v0.3.3 — toque para focar
+
+A moldura padrão passa a ser 45%.
+
+Depois de abrir a câmera, toque diretamente sobre a área que quer priorizar:
+- nome da carta; ou
+- rodapé / collector number.
+
+O scanner consulta as capacidades expostas pelo navegador:
+
+1. `pointsOfInterest` + `focusMode`:
+   tenta focar exatamente no ponto tocado.
+2. apenas `single-shot`:
+   o toque solicita um novo ciclo de autofocus, mas o aparelho escolhe o ponto.
+3. nenhum controle exposto:
+   permanece o autofocus nativo do celular.
+
+Um quadrado aparece no ponto tocado para confirmar a interação.
+
+Em `Ajustes da câmera`, a linha `Toque para focar` informa o nível de suporte disponível no aparelho.
