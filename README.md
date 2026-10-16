@@ -1,4 +1,4 @@
-# Acervo MTG — Scanner v0.2
+# Acervo MTG — Scanner v0.2.1
 
 Esta versão corrige o principal problema observado na v0.1: **uma cena qualquer, apenas por ficar estável, não deve mais disparar uma captura**.
 
@@ -77,3 +77,8 @@ Se detectar objetos indevidos como carta, faça o inverso: reduza a tolerância 
 A v0.2 reconhece **geometria de carta**, ainda não reconhece que o conteúdo é especificamente uma carta de Magic. Um objeto retangular com proporção muito próxima a 63:88 pode eventualmente passar pelo filtro.
 
 A próxima etapa (v0.3) será a validação semântica: ler a faixa do nome e/ou a linha de coleção/collector number via OCR antes de considerar a captura válida.
+
+
+## Correção v0.2.1
+
+A câmera não depende mais da inicialização do OpenCV. O botão `Iniciar câmera` fica disponível imediatamente. O detector geométrico inicializa em paralelo e o status da tela informa separadamente se a câmera e o detector estão prontos. Isso evita que uma falha ou demora do OpenCV impeça a câmera de abrir.

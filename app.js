@@ -54,20 +54,70 @@
   cornerThreshold.addEventListener('input', () => cornerThresholdValue.value = cornerThreshold.value + ' px');
   minArea.addEventListener('input', () => minAreaValue.value = minArea.value + '%');
 
-  window.onOpenCvScriptLoaded = async function () {
+  function markCvReady() {
+    if (cvReady) return;
+    if (!window.cv || !window.cv.Mat) return;
+    cvReady = true;
+    engineDot.classList.remove('error');
+    engineDot.classList.add('ready');
+    engineStatus.textContent = 'Detector geométrico pronto';
+    if (running) setStatus('Detector pronto — procurando uma carta…');
+  }
+
+  async function initializeOpenCv() {
     try {
-      window.cv = (window.cv instanceof Promise) ? await window.cv : window.cv;
-      if (!window.cv || !cv.Mat) throw new Error('OpenCV indisponível');
-      cvReady = true;
-      engineDot.classList.add('ready');
-      engineStatus.textContent = 'Detector geométrico pronto';
-      startBtn.disabled = false;
+      // Algumas compilações atuais do OpenCV.js expõem cv como Promise;
+      // outras expõem o objeto antes de o runtime WASM terminar de inicializar.
+      if (window.cv && typeof window.cv.then === 'function') {
+        window.cv = await window.cv;
+      }
+
+      if (window.cv && window.cv.Mat) {
+        markCvReady();
+        return;
+      }
+
+      if (window.cv) {
+        const previousInit = window.cv.onRuntimeInitialized;
+        window.cv.onRuntimeInitialized = function () {
+          try { if (typeof previousInit === 'function') previousInit(); } catch (_) {}
+          markCvReady();
+        };
+      }
+
+      // Fallback para navegadores nos quais onRuntimeInitialized não dispara
+      // da forma esperada depois do carregamento do script.
+      const started = Date.now();
+      const timer = setInterval(() => {
+        if (window.cv && window.cv.Mat) {
+          clearInterval(timer);
+          markCvReady();
+        } else if (Date.now() - started > 20000) {
+          clearInterval(timer);
+          if (!cvReady) {
+            engineDot.classList.add('error');
+            engineStatus.textContent = 'Detector demorou para carregar';
+            if (running) setStatus('Câmera ativa — detector ainda indisponível');
+          }
+        }
+      }, 150);
     } catch (err) {
-      console.error(err);
+      console.error('OpenCV:', err);
       engineDot.classList.add('error');
       engineStatus.textContent = 'Falha ao carregar o detector';
-      setStatus('Recarregue a página com internet ativa');
+      if (running) setStatus('Câmera ativa — falha no detector');
     }
+  }
+
+  window.onOpenCvScriptLoaded = function () {
+    engineStatus.textContent = 'Inicializando detector geométrico…';
+    initializeOpenCv();
+  };
+
+  window.onOpenCvScriptFailed = function () {
+    engineDot.classList.add('error');
+    engineStatus.textContent = 'Falha ao baixar o detector';
+    if (running) setStatus('Câmera ativa — detector não carregou');
   };
 
   function setStatus(text) { statusEl.textContent = text; }
@@ -357,6 +407,13 @@
     if (now - lastAnalysisAt < ANALYSIS_INTERVAL) return;
     lastAnalysisAt = now;
 
+    if (!cvReady) {
+      currentCandidate = null;
+      clearDetectionUI();
+      setStatus('Câmera ativa — aguardando detector geométrico…');
+      return;
+    }
+
     const candidate = detectCard();
     currentCandidate = candidate;
 
@@ -391,7 +448,6 @@
   }
 
   async function startCamera() {
-    if (!cvReady) return;
     try {
       startBtn.disabled = true; setStatus('Solicitando acesso à câmera…');
       audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
@@ -401,7 +457,8 @@
       });
       video.srcObject = stream; await video.play();
       running = true; manualBtn.disabled = false; startBtn.textContent = 'Câmera ativa';
-      resizeOverlay(); clearDetectionUI(); setStatus('Procurando uma carta…');
+      resizeOverlay(); clearDetectionUI();
+      setStatus(cvReady ? 'Procurando uma carta…' : 'Câmera ativa — aguardando detector geométrico…');
       requestAnimationFrame(analyze);
     } catch (err) {
       console.error(err); startBtn.disabled = false; setStatus('Não foi possível abrir a câmera');
