@@ -4,17 +4,17 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#101318" />
-  <title>Acervo MTG — Scanner v0.2.4</title>
-  <link rel="manifest" href="manifest.webmanifest?v=024" />
-  <link rel="stylesheet" href="styles.css?v=024" />
+  <title>Acervo MTG — Scanner v0.2.5</title>
+  <link rel="manifest" href="manifest.webmanifest?v=025" />
+  <link rel="stylesheet" href="styles.css?v=025" />
 </head>
 <body>
   <main class="app">
     <header>
       <div>
         <p class="eyebrow">ACERVO MTG</p>
-        <h1>Scanner v0.2.4</h1>
-        <p class="sub">Detector leve — sem OpenCV</p>
+        <h1>Scanner v0.2.5</h1>
+        <p class="sub">Detecção + controle de nitidez</p>
       </div>
       <div class="counter">
         <span id="count">0</span>
@@ -23,13 +23,13 @@
     </header>
 
     <section class="diagnostics">
-      <div><span class="dot ok"></span><span id="engineStatus">Motor leve pronto</span></div>
+      <div><span class="dot ok"></span><span>Motor leve pronto</span></div>
       <div><span class="dot" id="cameraDot"></span><span id="cameraStatus">Câmera desligada</span></div>
+      <div><span class="dot" id="focusDot"></span><span id="focusStatus">Foco: aguardando câmera</span></div>
     </section>
 
     <section class="camera-shell" id="cameraShell">
       <video id="video" playsinline muted></video>
-
       <div class="shade"></div>
 
       <div class="card-frame" id="cardFrame">
@@ -37,6 +37,11 @@
         <span class="corner tr"></span>
         <span class="corner bl"></span>
         <span class="corner br"></span>
+
+        <div class="ocr-zone">
+          <span>FAIXA CRÍTICA PARA OCR</span>
+        </div>
+
         <div class="frame-label">ALINHE A CARTA</div>
       </div>
 
@@ -48,6 +53,8 @@
       <div><small>Confiança</small><strong id="confidence">0%</strong></div>
       <div><small>Proporção</small><strong id="ratio">—</strong></div>
       <div><small>Estabilidade</small><strong id="stability">—</strong></div>
+      <div class="metric-wide"><small>Nitidez da faixa inferior</small><strong id="bottomSharpness">—</strong></div>
+      <div class="metric-wide"><small>Stream real</small><strong id="streamInfo">—</strong></div>
     </section>
 
     <section class="controls">
@@ -59,6 +66,23 @@
         <span>Captura automática</span>
       </label>
     </section>
+
+    <details class="camera-settings">
+      <summary>Ajustes da câmera</summary>
+
+      <div class="setting-row">
+        <span>Foco contínuo</span>
+        <strong id="continuousFocusInfo">—</strong>
+      </div>
+
+      <label id="zoomWrap" hidden>
+        Zoom
+        <input id="zoomSlider" type="range" min="1" max="1" step="0.1" value="1" />
+        <output id="zoomValue">1.0×</output>
+      </label>
+
+      <button id="refocusBtn" class="secondary full" type="button" disabled>Reaplicar foco</button>
+    </details>
 
     <section class="last-capture">
       <div class="section-title">
@@ -91,17 +115,23 @@
         <input id="stableThreshold" type="range" min="2" max="14" value="6" />
         <output id="stableValue">6</output>
       </label>
+
+      <label>
+        Nitidez mínima da faixa inferior
+        <input id="sharpnessThreshold" type="range" min="3" max="25" value="8" />
+        <output id="sharpnessValue">8</output>
+      </label>
     </details>
 
     <section class="notes">
-      <h2>Teste desta versão</h2>
-      <p>Primeiro deixe apenas a mesa visível. Depois alinhe uma carta aproximadamente com a moldura. O sistema procura quatro bordas próximas da posição esperada e confere se a proporção é compatível com uma carta MTG.</p>
+      <h2>O que mudou</h2>
+      <p>A captura automática agora espera a carta estar estável e a região inferior atingir nitidez mínima. A câmera solicita resolução Full HD quando possível e tenta ativar foco contínuo quando o navegador/celular oferece esse controle.</p>
     </section>
 
-    <canvas id="analysisCanvas" width="180" height="252" hidden></canvas>
-    <canvas id="captureCanvas" width="630" height="880" hidden></canvas>
+    <canvas id="analysisCanvas" width="240" height="336" hidden></canvas>
+    <canvas id="captureCanvas" width="1260" height="1760" hidden></canvas>
   </main>
 
-  <script src="app.js?v=024"></script>
+  <script src="app.js?v=025"></script>
 </body>
 </html>
