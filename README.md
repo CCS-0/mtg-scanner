@@ -1,104 +1,90 @@
-# Acervo MTG — Scanner v0.2.3
+# Acervo MTG — Scanner v0.2.4
 
-Esta versão corrige o principal problema observado na v0.1: **uma cena qualquer, apenas por ficar estável, não deve mais disparar uma captura**.
+Versão de recuperação após o travamento da v0.2.3.
 
-## O que mudou
+## Mudança principal
 
-A captura automática agora exige, nesta ordem:
+O OpenCV.js foi removido completamente.
 
-1. OpenCV encontrar um contorno fechado;
-2. o contorno ser aproximável por um quadrilátero convexo;
-3. ocupar uma área mínima da região de leitura;
-4. ter proporção compatível com uma carta MTG (alvo físico 63:88 ≈ 0,716);
-5. estar razoavelmente centralizado;
-6. os quatro cantos permanecerem estáveis por várias análises consecutivas.
+No celular, carregar e executar o OpenCV/WASM junto com vídeo contínuo estava causando congelamento da página. Esta versão usa somente APIs nativas do navegador:
 
-Somente então ocorre a captura automática.
+- `getUserMedia`
+- `<video>`
+- `<canvas>`
+- JavaScript puro
 
-Além disso, a imagem é corrigida por perspectiva e convertida para 630 × 880 px.
+## Como o detector funciona
 
-## Como atualizar seu GitHub Pages
+Ele não procura qualquer retângulo em toda a tela.
 
-Substitua no repositório os arquivos da v0.1 por estes arquivos:
+A moldura funciona como "zona de leitura". O algoritmo:
 
-- `index.html`
-- `app.js`
-- `styles.css`
-- `manifest.webmanifest`
-- `README.md`
+1. recorta uma região um pouco maior do que a moldura;
+2. reduz para 180 × 252 px;
+3. procura uma borda vertical à esquerda;
+4. procura uma borda vertical à direita;
+5. procura uma borda horizontal no topo;
+6. procura uma borda horizontal embaixo;
+7. calcula a razão largura/altura;
+8. compara com 63/88;
+9. mede textura interna;
+10. calcula uma confiança;
+11. exige que as bordas permaneçam estáveis;
+12. só então captura.
 
-Faça commit na branch publicada pelo GitHub Pages. Aguarde a publicação e recarregue a página do celular. Se o navegador mantiver a versão antiga, use recarga completa/limpe o cache do site.
+A análise roda cerca de 4 vezes por segundo, reduzindo muito uso de CPU.
 
-## Teste A — sem carta
+## Limitações desta versão
 
-Abra a câmera e deixe a mesa vazia e estável por 10–15 segundos.
+Ainda não é OCR nem identificação de MTG.
 
-**Resultado esperado:**
+Um objeto retangular muito parecido com uma carta ainda pode passar pelo filtro. O objetivo desta etapa é impedir que "qualquer cena parada" dispare e validar um detector leve no celular.
 
-- `Nenhuma carta detectada`
-- contador permanece em 0
-- nenhuma captura automática
+## Atualização no GitHub Pages
 
-## Teste B — objetos aleatórios
+Substitua os arquivos antigos por:
 
-Passe a mão, um celular, uma caneta, uma folha e outros objetos pela área.
+- index.html
+- app.js
+- styles.css
+- manifest.webmanifest
+- README.md
 
-**Resultado esperado:** não capturar, salvo se o objeto formar um quadrilátero muito semelhante a uma carta.
+Confirme na página que aparece `Scanner v0.2.4`.
 
-## Teste C — carta real
+## Teste recomendado
 
-Coloque uma carta de Magic aproximadamente dentro da moldura.
+### 1. Mesa vazia
+Esperado:
+- "Nenhuma carta detectada"
+- 0 capturas
 
-A tela deve mudar para:
+### 2. Mão / caneta / objetos comuns
+Esperado:
+- sem captura automática
 
-- `carta provável`
-- mostrar a proporção encontrada
-- desenhar um polígono sobre os quatro cantos
-- `Carta detectada — segure`
-- `Carta detectada e estável`
-- BIP + captura
+### 3. Uma carta alinhada à moldura
+Esperado:
+- "provável carta"
+- confiança sobe
+- proporção próxima de 0,716
+- estabilidade chega a 4/4
+- captura
 
-Depois retire a carta completamente. O sistema só libera a próxima captura após alguns quadros sem carta detectada.
+### 4. Ajustes
+Se uma carta real não for reconhecida:
+- abaixe "Sensibilidade das bordas" gradualmente;
+- abaixe "Confiança mínima" de 63% para 58%.
 
-## Ajustes
+Se objetos estranhos estiverem sendo reconhecidos:
+- aumente "Confiança mínima";
+- aumente "Sensibilidade das bordas".
 
-Deixe os padrões primeiro:
+## Próximo passo
 
-- tolerância da proporção: 18%
-- estabilidade dos cantos: 8 px
-- área mínima: 38%
-
-Se não detectar cartas verdadeiras, aumente a tolerância para 22–24% ou reduza a área mínima para 32–35%.
-
-Se detectar objetos indevidos como carta, faça o inverso: reduza a tolerância e/ou aumente a área mínima.
-
-## Limitação consciente desta versão
-
-A v0.2 reconhece **geometria de carta**, ainda não reconhece que o conteúdo é especificamente uma carta de Magic. Um objeto retangular com proporção muito próxima a 63:88 pode eventualmente passar pelo filtro.
-
-A próxima etapa (v0.3) será a validação semântica: ler a faixa do nome e/ou a linha de coleção/collector number via OCR antes de considerar a captura válida.
-
-
-## Correção v0.2.3
-
-A câmera não depende mais da inicialização do OpenCV. O botão `Iniciar câmera` fica disponível imediatamente. O detector geométrico inicializa em paralelo e o status da tela informa separadamente se a câmera e o detector estão prontos. Isso evita que uma falha ou demora do OpenCV impeça a câmera de abrir.
-
-
-## Diagnóstico v0.2.3
-
-Ao tocar em **Iniciar câmera**, o status deve mudar imediatamente para `Clique recebido — iniciando câmera…`.
-
-- Se isso não acontecer, o navegador ainda está exibindo uma versão antiga do `index.html`.
-- Se aparecer `Erro: app.js ainda não carregou`, o HTML foi atualizado, mas o JavaScript não foi carregado.
-- Se aparecer `Clique recebido — solicitando acesso à câmera…`, o JavaScript está funcionando e o próximo diagnóstico é a permissão/API da câmera.
-
-Os arquivos `app.js` e `styles.css` usam `?v=022` no HTML para evitar cache antigo do GitHub Pages/navegador.
-
-
-## Correção v0.2.3
-
-- Corrige condição de corrida na inicialização do OpenCV.js.
-- Define `Module.onRuntimeInitialized` antes de carregar o OpenCV, conforme o padrão oficial.
-- Fixa o OpenCV em 4.13.0 para evitar mudança silenciosa do alias `4.x`.
-- Mantém um sinal persistente caso o runtime termine antes de `app.js` executar.
-- Adiciona watchdog de 30 s com mensagem explícita se o runtime não inicializar.
+Depois de estabilizar esta versão:
+- recortar a faixa de nome;
+- recortar a linha de set/collector number;
+- OCR;
+- busca no Scryfall;
+- só dar o bip após identificar a impressão.

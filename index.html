@@ -4,16 +4,17 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#101318" />
-  <title>Acervo MTG — Scanner v0.2.3</title>
-  <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=023" />
+  <title>Acervo MTG — Scanner v0.2.4</title>
+  <link rel="manifest" href="manifest.webmanifest?v=024" />
+  <link rel="stylesheet" href="styles.css?v=024" />
 </head>
 <body>
   <main class="app">
     <header>
       <div>
         <p class="eyebrow">ACERVO MTG</p>
-        <h1>Scanner v0.2.3</h1>
+        <h1>Scanner v0.2.4</h1>
+        <p class="sub">Detector leve — sem OpenCV</p>
       </div>
       <div class="counter">
         <span id="count">0</span>
@@ -21,49 +22,42 @@
       </div>
     </header>
 
-    <div class="engine-line">
-      <span class="engine-dot" id="engineDot"></span>
-      <span id="engineStatus">Carregando detector de cartas…</span>
-    </div>
+    <section class="diagnostics">
+      <div><span class="dot ok"></span><span id="engineStatus">Motor leve pronto</span></div>
+      <div><span class="dot" id="cameraDot"></span><span id="cameraStatus">Câmera desligada</span></div>
+    </section>
 
     <section class="camera-shell" id="cameraShell">
       <video id="video" playsinline muted></video>
-      <canvas id="overlayCanvas"></canvas>
 
       <div class="shade"></div>
+
       <div class="card-frame" id="cardFrame">
         <span class="corner tl"></span>
         <span class="corner tr"></span>
         <span class="corner bl"></span>
         <span class="corner br"></span>
-        <div class="frame-label">POSICIONE UMA CARTA</div>
+        <div class="frame-label">ALINHE A CARTA</div>
       </div>
 
-      <div class="status-pill" id="status">Câmera desligada</div>
+      <div class="status-pill" id="status">Toque em “Iniciar câmera”</div>
+    </section>
+
+    <section class="metrics">
+      <div><small>Carta</small><strong id="cardState">não detectada</strong></div>
+      <div><small>Confiança</small><strong id="confidence">0%</strong></div>
+      <div><small>Proporção</small><strong id="ratio">—</strong></div>
+      <div><small>Estabilidade</small><strong id="stability">—</strong></div>
     </section>
 
     <section class="controls">
-      <button id="startBtn" class="primary" type="button" onclick="window.__mtgStartClick && window.__mtgStartClick(event)">Iniciar câmera</button>
-      <button id="manualBtn" class="secondary" disabled>Capturar agora</button>
+      <button id="startBtn" class="primary" type="button">Iniciar câmera</button>
+      <button id="manualBtn" class="secondary" type="button" disabled>Capturar agora</button>
+
       <label class="toggle">
         <input id="autoToggle" type="checkbox" checked />
-        <span>Captura automática somente quando detectar uma carta</span>
+        <span>Captura automática</span>
       </label>
-    </section>
-
-    <section class="detector-panel">
-      <div class="detector-row">
-        <span>Objeto</span>
-        <strong id="objectState">—</strong>
-      </div>
-      <div class="detector-row">
-        <span>Proporção detectada</span>
-        <strong id="ratioState">—</strong>
-      </div>
-      <div class="detector-row">
-        <span>Confiança geométrica</span>
-        <strong id="confidenceState">—</strong>
-      </div>
     </section>
 
     <section class="last-capture">
@@ -72,64 +66,42 @@
         <span id="quality">—</span>
       </div>
       <div class="preview-empty" id="previewEmpty">
-        A carta retificada aparecerá aqui após uma captura válida.
+        A carta capturada aparecerá aqui.
       </div>
       <img id="preview" alt="Última carta capturada" hidden />
     </section>
 
     <details class="tuning">
       <summary>Ajustes de teste</summary>
-      <p class="hint">Os valores padrão são deliberadamente conservadores. Primeiro teste sem alterar.</p>
+
       <label>
-        Tolerância da proporção
-        <input id="ratioTolerance" type="range" min="8" max="28" value="18" />
-        <output id="ratioToleranceValue">18%</output>
+        Sensibilidade das bordas
+        <input id="edgeThreshold" type="range" min="5" max="35" value="13" />
+        <output id="edgeValue">13</output>
       </label>
+
       <label>
-        Estabilidade dos cantos
-        <input id="cornerThreshold" type="range" min="2" max="18" value="8" />
-        <output id="cornerThresholdValue">8 px</output>
+        Confiança mínima
+        <input id="confidenceThreshold" type="range" min="45" max="90" value="63" />
+        <output id="confidenceValue">63%</output>
       </label>
+
       <label>
-        Área mínima da carta
-        <input id="minArea" type="range" min="25" max="70" value="38" />
-        <output id="minAreaValue">38%</output>
+        Estabilidade
+        <input id="stableThreshold" type="range" min="2" max="14" value="6" />
+        <output id="stableValue">6</output>
       </label>
     </details>
 
-    <canvas id="detectCanvas" width="360" height="504" hidden></canvas>
-    <canvas id="captureSourceCanvas" width="720" height="1008" hidden></canvas>
+    <section class="notes">
+      <h2>Teste desta versão</h2>
+      <p>Primeiro deixe apenas a mesa visível. Depois alinhe uma carta aproximadamente com a moldura. O sistema procura quatro bordas próximas da posição esperada e confere se a proporção é compatível com uma carta MTG.</p>
+    </section>
+
+    <canvas id="analysisCanvas" width="180" height="252" hidden></canvas>
     <canvas id="captureCanvas" width="630" height="880" hidden></canvas>
   </main>
 
-  <script>
-    window.__mtgStartClick = function () {
-      var status = document.getElementById('status');
-      if (status) status.textContent = 'Clique recebido — iniciando câmera…';
-      if (typeof window.startMtgCamera === 'function') {
-        window.startMtgCamera();
-      } else {
-        if (status) status.textContent = 'Erro: app.js ainda não carregou';
-        setTimeout(function () {
-          if (typeof window.startMtgCamera === 'function') window.startMtgCamera();
-        }, 500);
-      }
-    };
-  </script>
-  <script>
-    // OpenCV precisa receber Module.onRuntimeInitialized ANTES de opencv.js executar.
-    // O sinal fica persistido em __opencvRuntimeReady para evitar condição de corrida.
-    window.__opencvRuntimeReady = false;
-    window.Module = {
-      onRuntimeInitialized: function () {
-        window.__opencvRuntimeReady = true;
-        window.dispatchEvent(new Event('opencv-runtime-ready'));
-      }
-    };
-  </script>
-  <script defer src="app.js?v=023"></script>
-  <script async src="https://docs.opencv.org/4.13.0/opencv.js"
-          onload="window.dispatchEvent(new Event('opencv-script-loaded'))"
-          onerror="window.dispatchEvent(new Event('opencv-script-error'))"></script>
+  <script src="app.js?v=024"></script>
 </body>
 </html>

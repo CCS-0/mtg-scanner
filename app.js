@@ -1,15 +1,9 @@
 (() => {
-  const TARGET_RATIO = 63 / 88;
-  const ANALYSIS_INTERVAL = 180;
-  const REQUIRED_STABLE_DETECTIONS = 4;
-  const REQUIRED_EMPTY_DETECTIONS_TO_UNLOCK = 3;
-  const DETECT_MARGIN = 1.13;
+  'use strict';
 
   const video = document.getElementById('video');
   const shell = document.getElementById('cameraShell');
   const frame = document.getElementById('cardFrame');
-  const overlay = document.getElementById('overlayCanvas');
-  const overlayCtx = overlay.getContext('2d');
   const startBtn = document.getElementById('startBtn');
   const manualBtn = document.getElementById('manualBtn');
   const autoToggle = document.getElementById('autoToggle');
@@ -18,478 +12,425 @@
   const preview = document.getElementById('preview');
   const previewEmpty = document.getElementById('previewEmpty');
   const qualityEl = document.getElementById('quality');
-  const engineStatus = document.getElementById('engineStatus');
-  const engineDot = document.getElementById('engineDot');
-  const objectState = document.getElementById('objectState');
-  const ratioState = document.getElementById('ratioState');
-  const confidenceState = document.getElementById('confidenceState');
+  const cameraStatus = document.getElementById('cameraStatus');
+  const cameraDot = document.getElementById('cameraDot');
 
-  const detectCanvas = document.getElementById('detectCanvas');
-  const detectCtx = detectCanvas.getContext('2d', { willReadFrequently: true });
-  const captureSourceCanvas = document.getElementById('captureSourceCanvas');
-  const captureSourceCtx = captureSourceCanvas.getContext('2d');
+  const cardStateEl = document.getElementById('cardState');
+  const confidenceEl = document.getElementById('confidence');
+  const ratioEl = document.getElementById('ratio');
+  const stabilityEl = document.getElementById('stability');
+
+  const edgeThreshold = document.getElementById('edgeThreshold');
+  const confidenceThreshold = document.getElementById('confidenceThreshold');
+  const stableThreshold = document.getElementById('stableThreshold');
+  const edgeValue = document.getElementById('edgeValue');
+  const confidenceValue = document.getElementById('confidenceValue');
+  const stableValue = document.getElementById('stableValue');
+
+  const analysisCanvas = document.getElementById('analysisCanvas');
+  const actx = analysisCanvas.getContext('2d', { willReadFrequently: true });
   const captureCanvas = document.getElementById('captureCanvas');
+  const cctx = captureCanvas.getContext('2d');
 
-  const ratioTolerance = document.getElementById('ratioTolerance');
-  const cornerThreshold = document.getElementById('cornerThreshold');
-  const minArea = document.getElementById('minArea');
-  const ratioToleranceValue = document.getElementById('ratioToleranceValue');
-  const cornerThresholdValue = document.getElementById('cornerThresholdValue');
-  const minAreaValue = document.getElementById('minAreaValue');
-
-  let cvReady = false;
   let stream = null;
   let running = false;
-  let locked = false;
-  let stableDetections = 0;
-  let emptyDetections = 0;
-  let previousQuad = null;
-  let lastAnalysisAt = 0;
+  let lastAnalyzeAt = 0;
   let captureCount = 0;
+  let stableFrames = 0;
+  let locked = false;
+  let unlockFrames = 0;
+  let prevEdges = null;
   let audioCtx = null;
-  let currentCandidate = null;
-  let currentDetectionSourceRect = null;
 
-  // Diagnóstico: confirma que este arquivo realmente carregou.
-  if (engineStatus) engineStatus.textContent = 'Interface pronta — carregando detector…';
-  if (startBtn) startBtn.dataset.jsLoaded = 'true';
+  const IDEAL_RATIO = 63 / 88;
 
-  ratioTolerance?.addEventListener('input', () => { if (ratioToleranceValue) ratioToleranceValue.value = ratioTolerance.value + '%'; });
-  cornerThreshold?.addEventListener('input', () => { if (cornerThresholdValue) cornerThresholdValue.value = cornerThreshold.value + ' px'; });
-  minArea?.addEventListener('input', () => { if (minAreaValue) minAreaValue.value = minArea.value + '%'; });
+  function setStatus(s) { statusEl.textContent = s; }
 
-  function markCvReady() {
-    if (cvReady) return;
-    if (!window.cv || !window.cv.Mat) return;
-    cvReady = true;
-    engineDot.classList.remove('error');
-    engineDot.classList.add('ready');
-    engineStatus.textContent = 'Detector geométrico pronto';
-    if (running) setStatus('Detector pronto — procurando uma carta…');
+  function setCameraState(text, mode='') {
+    cameraStatus.textContent = text;
+    cameraDot.className = 'dot' + (mode ? ' ' + mode : '');
   }
 
-  async function resolveCvObject() {
-    try {
-      // OpenCV 4.13 pode expor `cv` diretamente ou como Promise.
-      if (window.cv && typeof window.cv.then === 'function') {
-        engineStatus.textContent = 'Finalizando inicialização do OpenCV…';
-        window.cv = await window.cv;
-      }
-      if (window.cv && window.cv.Mat) {
-        markCvReady();
-        return true;
-      }
-    } catch (err) {
-      console.error('OpenCV resolve:', err);
-    }
-    return false;
+  edgeThreshold.addEventListener('input', () => edgeValue.value = edgeThreshold.value);
+  confidenceThreshold.addEventListener('input', () => confidenceValue.value = confidenceThreshold.value + '%');
+  stableThreshold.addEventListener('input', () => stableValue.value = stableThreshold.value);
+
+  function frameRectInShell() {
+    const sr = shell.getBoundingClientRect();
+    const fr = frame.getBoundingClientRect();
+    return {
+      x: fr.left - sr.left,
+      y: fr.top - sr.top,
+      width: fr.width,
+      height: fr.height
+    };
   }
 
-  function startOpenCvWatchdog() {
-    const started = Date.now();
-    const timer = setInterval(async () => {
-      if (cvReady) {
-        clearInterval(timer);
-        return;
-      }
-      if (await resolveCvObject()) {
-        clearInterval(timer);
-        return;
-      }
-      const elapsed = Date.now() - started;
-      if (elapsed > 30000) {
-        clearInterval(timer);
-        engineDot.classList.add('error');
-        engineStatus.textContent = 'OpenCV não inicializou — recarregue a página';
-        if (running) setStatus('Câmera ativa — detector indisponível');
-      }
-    }, 250);
-  }
-
-  // Se o runtime já terminou antes do app.js executar, o sinal persistente resolve a corrida.
-  if (window.__opencvRuntimeReady) {
-    engineStatus.textContent = 'Runtime OpenCV pronto — conectando detector…';
-    resolveCvObject();
-  } else {
-    engineStatus.textContent = 'Carregando OpenCV 4.13…';
-  }
-
-  window.addEventListener('opencv-script-loaded', () => {
-    if (!cvReady) engineStatus.textContent = 'OpenCV baixado — inicializando runtime…';
-    resolveCvObject();
-  });
-
-  window.addEventListener('opencv-runtime-ready', () => {
-    engineStatus.textContent = 'Runtime OpenCV pronto — conectando detector…';
-    resolveCvObject();
-  });
-
-  window.addEventListener('opencv-script-error', () => {
-    engineDot.classList.add('error');
-    engineStatus.textContent = 'Falha ao baixar OpenCV 4.13';
-    if (running) setStatus('Câmera ativa — detector não foi baixado');
-  });
-
-  startOpenCvWatchdog();
-
-  function setStatus(text) { statusEl.textContent = text; }
-
-  function resizeOverlay() {
-    const dpr = window.devicePixelRatio || 1;
-    const w = shell.clientWidth;
-    const h = shell.clientHeight;
-    overlay.width = Math.round(w * dpr);
-    overlay.height = Math.round(h * dpr);
-    overlay.style.width = w + 'px';
-    overlay.style.height = h + 'px';
-    overlayCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
-
-  function relativeFrameRect(scaleFactor = 1) {
-    const shellRect = shell.getBoundingClientRect();
-    const frameRect = frame.getBoundingClientRect();
-    const cx = frameRect.left - shellRect.left + frameRect.width / 2;
-    const cy = frameRect.top - shellRect.top + frameRect.height / 2;
-    const width = frameRect.width * scaleFactor;
-    const height = frameRect.height * scaleFactor;
-    return { x: cx - width / 2, y: cy - height / 2, width, height };
-  }
-
-  function visibleRectToVideoRect(r) {
+  function displayedVideoGeometry() {
     const vw = video.videoWidth, vh = video.videoHeight;
     const cw = shell.clientWidth, ch = shell.clientHeight;
     const scale = Math.max(cw / vw, ch / vh);
-    const displayedW = vw * scale, displayedH = vh * scale;
-    const offsetX = (cw - displayedW) / 2, offsetY = (ch - displayedH) / 2;
-    let sx = (r.x - offsetX) / scale;
-    let sy = (r.y - offsetY) / scale;
-    let sw = r.width / scale;
-    let sh = r.height / scale;
+    return {
+      scale,
+      offsetX: (cw - vw * scale) / 2,
+      offsetY: (ch - vh * scale) / 2
+    };
+  }
+
+  function sourceRectFromShellRect(r) {
+    const vw = video.videoWidth, vh = video.videoHeight;
+    const g = displayedVideoGeometry();
+
+    let sx = (r.x - g.offsetX) / g.scale;
+    let sy = (r.y - g.offsetY) / g.scale;
+    let sw = r.width / g.scale;
+    let sh = r.height / g.scale;
+
     sx = Math.max(0, Math.min(vw - 1, sx));
     sy = Math.max(0, Math.min(vh - 1, sy));
     sw = Math.max(1, Math.min(vw - sx, sw));
     sh = Math.max(1, Math.min(vh - sy, sh));
+
     return { sx, sy, sw, sh };
   }
 
-  function detectionSourceRect() {
-    return visibleRectToVideoRect(relativeFrameRect(DETECT_MARGIN));
+  // Recorte ampliado ao redor da moldura.
+  function expandedFrameRect() {
+    const r = frameRectInShell();
+    const mx = r.width * 0.16;
+    const my = r.height * 0.12;
+    return {
+      x: Math.max(0, r.x - mx),
+      y: Math.max(0, r.y - my),
+      width: Math.min(shell.clientWidth, r.x + r.width + mx) - Math.max(0, r.x - mx),
+      height: Math.min(shell.clientHeight, r.y + r.height + my) - Math.max(0, r.y - my)
+    };
   }
 
-  function orderQuad(points) {
-    const pts = points.map(p => ({ x: p.x, y: p.y }));
-    const sums = pts.map(p => p.x + p.y);
-    const diffs = pts.map(p => p.y - p.x);
-    const tl = pts[sums.indexOf(Math.min(...sums))];
-    const br = pts[sums.indexOf(Math.max(...sums))];
-    const tr = pts[diffs.indexOf(Math.min(...diffs))];
-    const bl = pts[diffs.indexOf(Math.max(...diffs))];
-    return [tl, tr, br, bl];
-  }
+  function getGrayFrame() {
+    if (!video.videoWidth || !video.videoHeight) return null;
+    const r = expandedFrameRect();
+    const s = sourceRectFromShellRect(r);
 
-  function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+    actx.drawImage(
+      video,
+      s.sx, s.sy, s.sw, s.sh,
+      0, 0, analysisCanvas.width, analysisCanvas.height
+    );
 
-  function quadRatio(q) {
-    const top = dist(q[0], q[1]);
-    const bottom = dist(q[3], q[2]);
-    const left = dist(q[0], q[3]);
-    const right = dist(q[1], q[2]);
-    const w = (top + bottom) / 2;
-    const h = (left + right) / 2;
-    if (!h || !w) return 0;
-    return Math.min(w, h) / Math.max(w, h);
-  }
+    const img = actx.getImageData(0, 0, analysisCanvas.width, analysisCanvas.height);
+    const data = img.data;
+    const gray = new Float32Array(analysisCanvas.width * analysisCanvas.height);
 
-  function quadCenter(q) {
-    return { x: q.reduce((s,p) => s+p.x,0)/4, y: q.reduce((s,p) => s+p.y,0)/4 };
-  }
-
-  function averageCornerMovement(a, b) {
-    if (!a || !b) return Infinity;
-    let total = 0;
-    for (let i=0;i<4;i++) total += dist(a[i], b[i]);
-    return total / 4;
-  }
-
-  function detectCard() {
-    if (!cvReady || !video.videoWidth) return null;
-    const srcRect = detectionSourceRect();
-    currentDetectionSourceRect = srcRect;
-
-    detectCtx.drawImage(video, srcRect.sx, srcRect.sy, srcRect.sw, srcRect.sh, 0, 0, detectCanvas.width, detectCanvas.height);
-
-    let src, gray, blurred, edges, kernel, contours, hierarchy;
-    try {
-      src = cv.imread(detectCanvas);
-      gray = new cv.Mat();
-      blurred = new cv.Mat();
-      edges = new cv.Mat();
-      contours = new cv.MatVector();
-      hierarchy = new cv.Mat();
-
-      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
-      cv.GaussianBlur(gray, blurred, new cv.Size(5,5), 0, 0, cv.BORDER_DEFAULT);
-      cv.Canny(blurred, edges, 55, 150, 3, false);
-      kernel = cv.Mat.ones(3, 3, cv.CV_8U);
-      cv.morphologyEx(edges, edges, cv.MORPH_CLOSE, kernel);
-      cv.dilate(edges, edges, kernel);
-      cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
-
-      const canvasArea = detectCanvas.width * detectCanvas.height;
-      const minAreaRatio = Number(minArea.value) / 100;
-      const tol = Number(ratioTolerance.value) / 100;
-      let best = null;
-
-      for (let i = 0; i < contours.size(); i++) {
-        const cnt = contours.get(i);
-        let approx = null;
-        try {
-          const area = Math.abs(cv.contourArea(cnt, false));
-          const areaRatio = area / canvasArea;
-          if (areaRatio < minAreaRatio || areaRatio > 0.97) continue;
-
-          const peri = cv.arcLength(cnt, true);
-          approx = new cv.Mat();
-          cv.approxPolyDP(cnt, approx, 0.025 * peri, true);
-          if (approx.rows !== 4 || !cv.isContourConvex(approx)) continue;
-
-          const raw = approx.data32S;
-          const pts = [];
-          for (let j = 0; j < 4; j++) pts.push({ x: raw[j*2], y: raw[j*2+1] });
-          const q = orderQuad(pts);
-          const ratio = quadRatio(q);
-          const ratioError = Math.abs(ratio - TARGET_RATIO) / TARGET_RATIO;
-          if (ratioError > tol) continue;
-
-          const c = quadCenter(q);
-          const dc = Math.hypot(c.x - detectCanvas.width/2, c.y - detectCanvas.height/2);
-          const maxDc = Math.hypot(detectCanvas.width/2, detectCanvas.height/2);
-          const centerScore = 1 - Math.min(1, dc / (maxDc * 0.62));
-          if (centerScore < 0.35) continue;
-
-          const ratioScore = Math.max(0, 1 - ratioError / tol);
-          const areaScore = Math.min(1, areaRatio / 0.72);
-          const score = ratioScore * 0.50 + centerScore * 0.25 + areaScore * 0.25;
-
-          if (!best || score > best.score) best = { quad: q, ratio, areaRatio, score };
-        } finally {
-          if (approx) approx.delete();
-          cnt.delete();
-        }
-      }
-      return best;
-    } catch (err) {
-      console.error('Detector:', err);
-      return null;
-    } finally {
-      [src, gray, blurred, edges, kernel, hierarchy].forEach(m => { try { m && m.delete(); } catch (_) {} });
-      try { contours && contours.delete(); } catch (_) {}
+    for (let i = 0, j = 0; i < data.length; i += 4, j++) {
+      gray[j] = data[i] * .299 + data[i+1] * .587 + data[i+2] * .114;
     }
+    return gray;
   }
 
-  function candidateToViewQuad(candidate) {
-    const guide = relativeFrameRect(DETECT_MARGIN);
-    return candidate.quad.map(p => ({
-      x: guide.x + (p.x / detectCanvas.width) * guide.width,
-      y: guide.y + (p.y / detectCanvas.height) * guide.height
-    }));
+  function verticalEdgeScore(gray, x, y0, y1) {
+    const w = analysisCanvas.width;
+    let sum = 0, n = 0;
+    x = Math.max(2, Math.min(w - 3, x));
+    for (let y = y0; y <= y1; y += 2) {
+      const a = gray[y*w + (x-2)];
+      const b = gray[y*w + (x+2)];
+      sum += Math.abs(a - b);
+      n++;
+    }
+    return n ? sum / n : 0;
   }
 
-  function drawCandidate(candidate, stable=false) {
-    overlayCtx.clearRect(0, 0, shell.clientWidth, shell.clientHeight);
-    if (!candidate) return;
-    const q = candidateToViewQuad(candidate);
-    overlayCtx.beginPath();
-    overlayCtx.moveTo(q[0].x, q[0].y);
-    for (let i=1;i<4;i++) overlayCtx.lineTo(q[i].x, q[i].y);
-    overlayCtx.closePath();
-    overlayCtx.lineWidth = stable ? 4 : 3;
-    overlayCtx.strokeStyle = stable ? 'rgba(255,255,255,.98)' : 'rgba(210,255,210,.88)';
-    overlayCtx.stroke();
-
-    q.forEach(p => {
-      overlayCtx.beginPath();
-      overlayCtx.arc(p.x, p.y, 5, 0, Math.PI*2);
-      overlayCtx.fillStyle = 'rgba(255,255,255,.95)';
-      overlayCtx.fill();
-    });
+  function horizontalEdgeScore(gray, y, x0, x1) {
+    const w = analysisCanvas.width;
+    const h = analysisCanvas.height;
+    let sum = 0, n = 0;
+    y = Math.max(2, Math.min(h - 3, y));
+    for (let x = x0; x <= x1; x += 2) {
+      const a = gray[(y-2)*w + x];
+      const b = gray[(y+2)*w + x];
+      sum += Math.abs(a - b);
+      n++;
+    }
+    return n ? sum / n : 0;
   }
 
-  function clearDetectionUI() {
-    objectState.textContent = 'nenhuma carta';
-    ratioState.textContent = '—';
-    confidenceState.textContent = '—';
-    frame.classList.remove('detected','stable');
-    drawCandidate(null);
+  function bestVertical(gray, start, end, y0, y1) {
+    let best = { pos: start, score: -1 };
+    for (let x = start; x <= end; x++) {
+      const score = verticalEdgeScore(gray, x, y0, y1);
+      if (score > best.score) best = { pos: x, score };
+    }
+    return best;
   }
 
-  function updateDetectionUI(candidate, stable) {
-    objectState.textContent = 'carta provável';
-    ratioState.textContent = candidate.ratio.toFixed(3) + ' (alvo 0,716)';
-    confidenceState.textContent = Math.round(candidate.score * 100) + '%';
+  function bestHorizontal(gray, start, end, x0, x1) {
+    let best = { pos: start, score: -1 };
+    for (let y = start; y <= end; y++) {
+      const score = horizontalEdgeScore(gray, y, x0, x1);
+      if (score > best.score) best = { pos: y, score };
+    }
+    return best;
+  }
+
+  function internalTexture(gray, left, right, top, bottom) {
+    const w = analysisCanvas.width;
+    let sum = 0, n = 0;
+    const lx = Math.max(left + 5, 2);
+    const rx = Math.min(right - 5, analysisCanvas.width - 3);
+    const ty = Math.max(top + 5, 2);
+    const by = Math.min(bottom - 5, analysisCanvas.height - 3);
+
+    for (let y = ty; y < by; y += 5) {
+      for (let x = lx; x < rx; x += 5) {
+        const c = gray[y*w+x];
+        const dx = gray[y*w+x+2];
+        const dy = gray[(y+2)*w+x];
+        sum += Math.abs(c-dx) + Math.abs(c-dy);
+        n += 2;
+      }
+    }
+    return n ? sum / n : 0;
+  }
+
+  function detectCard(gray) {
+    const w = analysisCanvas.width;
+    const h = analysisCanvas.height;
+
+    // Pela ampliação escolhida, a carta deve ocupar aproximadamente o miolo:
+    // x ~ 12%..88% e y ~ 9%..91%. Permitimos folga e buscamos o maior gradiente.
+    const y0 = Math.round(h * .16);
+    const y1 = Math.round(h * .84);
+    const x0 = Math.round(w * .16);
+    const x1 = Math.round(w * .84);
+
+    const left = bestVertical(gray, Math.round(w*.07), Math.round(w*.30), y0, y1);
+    const right = bestVertical(gray, Math.round(w*.70), Math.round(w*.93), y0, y1);
+    const top = bestHorizontal(gray, Math.round(h*.05), Math.round(h*.27), x0, x1);
+    const bottom = bestHorizontal(gray, Math.round(h*.73), Math.round(h*.95), x0, x1);
+
+    const rectW = right.pos - left.pos;
+    const rectH = bottom.pos - top.pos;
+    const ratio = rectH > 0 ? rectW / rectH : 0;
+
+    const edgeAvg = (left.score + right.score + top.score + bottom.score) / 4;
+    const minEdge = Number(edgeThreshold.value);
+
+    const ratioError = Math.abs(ratio - IDEAL_RATIO) / IDEAL_RATIO;
+    const ratioScore = Math.max(0, 1 - ratioError / 0.18); // tolera cerca de ±18%
+
+    const edgeScore = Math.max(0, Math.min(1, (edgeAvg - minEdge) / 18));
+    const minSingle = Math.min(left.score, right.score, top.score, bottom.score);
+    const fourEdgeScore = Math.max(0, Math.min(1, (minSingle - minEdge * .62) / 13));
+
+    const texture = internalTexture(gray, left.pos, right.pos, top.pos, bottom.pos);
+    const textureScore = Math.max(0, Math.min(1, (texture - 2.2) / 9));
+
+    // Evita detectar um retângulo muito pequeno/grande.
+    const widthFrac = rectW / w;
+    const heightFrac = rectH / h;
+    const sizeOk = widthFrac > .55 && widthFrac < .86 && heightFrac > .68 && heightFrac < .94;
+    const sizeScore = sizeOk ? 1 : 0;
+
+    const confidence = Math.round(100 * (
+      ratioScore * .32 +
+      edgeScore * .30 +
+      fourEdgeScore * .22 +
+      textureScore * .10 +
+      sizeScore * .06
+    ));
+
+    const detected =
+      sizeOk &&
+      ratio > .62 && ratio < .82 &&
+      left.score > minEdge * .68 &&
+      right.score > minEdge * .68 &&
+      top.score > minEdge * .68 &&
+      bottom.score > minEdge * .68 &&
+      confidence >= Number(confidenceThreshold.value);
+
+    return {
+      detected, confidence, ratio, texture,
+      edges: { left, right, top, bottom },
+      edgeAvg
+    };
+  }
+
+  function edgeMovement(edges) {
+    if (!prevEdges) return 999;
+    return (
+      Math.abs(edges.left.pos - prevEdges.left.pos) +
+      Math.abs(edges.right.pos - prevEdges.right.pos) +
+      Math.abs(edges.top.pos - prevEdges.top.pos) +
+      Math.abs(edges.bottom.pos - prevEdges.bottom.pos)
+    ) / 4;
+  }
+
+  function updateUI(result, movement) {
+    confidenceEl.textContent = result.confidence + '%';
+    ratioEl.textContent = result.ratio ? result.ratio.toFixed(3) : '—';
+
+    if (!result.detected) {
+      cardStateEl.textContent = 'não detectada';
+      stabilityEl.textContent = '—';
+      frame.classList.remove('detected', 'ready');
+      if (!locked) setStatus('Nenhuma carta detectada');
+      return;
+    }
+
     frame.classList.add('detected');
-    frame.classList.toggle('stable', stable);
-    drawCandidate(candidate, stable);
+    cardStateEl.textContent = 'provável carta';
+
+    if (movement < Number(stableThreshold.value)) {
+      stableFrames++;
+    } else {
+      stableFrames = 0;
+    }
+
+    stabilityEl.textContent = stableFrames + '/4';
+
+    if (stableFrames >= 2) {
+      setStatus('Carta detectada — segure');
+    }
+    if (stableFrames >= 4) {
+      frame.classList.add('ready');
+      setStatus('Carta estável');
+    } else {
+      frame.classList.remove('ready');
+    }
   }
 
   async function beep() {
     try {
       audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
       if (audioCtx.state === 'suspended') await audioCtx.resume();
-      const oscillator = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      oscillator.frequency.value = 920;
-      gain.gain.setValueAtTime(0.07, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.10);
-      oscillator.connect(gain); gain.connect(audioCtx.destination);
-      oscillator.start(); oscillator.stop(audioCtx.currentTime + 0.11);
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.frequency.value = 920;
+      g.gain.setValueAtTime(.07, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(.001, audioCtx.currentTime + .1);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(); o.stop(audioCtx.currentTime + .11);
     } catch (_) {}
   }
 
-  function sharpnessFromCanvas(canvas) {
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    const sw = 80, sh = 112;
-    const tmp = document.createElement('canvas'); tmp.width=sw; tmp.height=sh;
-    const tctx = tmp.getContext('2d', { willReadFrequently: true });
-    tctx.drawImage(canvas, 0,0,sw,sh);
-    const d = tctx.getImageData(0,0,sw,sh).data;
-    let total=0,n=0;
-    const lum = i => d[i]*.299+d[i+1]*.587+d[i+2]*.114;
-    for(let y=1;y<sh-1;y++) for(let x=1;x<sw-1;x++) {
-      const i=(y*sw+x)*4; total += Math.abs(lum(i)-lum(i+4)) + Math.abs(lum(i)-lum(i+sw*4)); n+=2;
-    }
-    return n ? total/n : 0;
+  function cropCapture() {
+    const r = frameRectInShell();
+    return sourceRectFromShellRect(r);
   }
 
-  function candidateToCaptureQuad(candidate) {
-    return candidate.quad.map(p => ({
-      x: (p.x / detectCanvas.width) * captureSourceCanvas.width,
-      y: (p.y / detectCanvas.height) * captureSourceCanvas.height
-    }));
-  }
+  async function capture() {
+    if (!running || !video.videoWidth) return;
 
-  async function captureCandidate(candidate) {
-    if (!candidate || !currentDetectionSourceRect || !running) return;
-    const r = currentDetectionSourceRect;
-    captureSourceCtx.drawImage(video, r.sx, r.sy, r.sw, r.sh, 0, 0, captureSourceCanvas.width, captureSourceCanvas.height);
+    const s = cropCapture();
+    cctx.clearRect(0, 0, captureCanvas.width, captureCanvas.height);
+    cctx.drawImage(
+      video,
+      s.sx, s.sy, s.sw, s.sh,
+      0, 0, captureCanvas.width, captureCanvas.height
+    );
 
-    let src, dst, srcPts, dstPts, matrix;
-    try {
-      src = cv.imread(captureSourceCanvas);
-      dst = new cv.Mat();
-      const q = candidateToCaptureQuad(candidate);
-      srcPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
-        q[0].x,q[0].y, q[1].x,q[1].y, q[2].x,q[2].y, q[3].x,q[3].y
-      ]);
-      dstPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
-        0,0, captureCanvas.width-1,0, captureCanvas.width-1,captureCanvas.height-1, 0,captureCanvas.height-1
-      ]);
-      matrix = cv.getPerspectiveTransform(srcPts, dstPts);
-      cv.warpPerspective(src, dst, matrix, new cv.Size(captureCanvas.width, captureCanvas.height), cv.INTER_LINEAR, cv.BORDER_REPLICATE, new cv.Scalar());
-      cv.imshow(captureCanvas, dst);
-    } catch (err) {
-      console.error('Captura retificada:', err);
-      return;
-    } finally {
-      [src,dst,srcPts,dstPts,matrix].forEach(m => { try { m && m.delete(); } catch (_) {} });
-    }
+    preview.src = captureCanvas.toDataURL('image/jpeg', .92);
+    preview.hidden = false;
+    previewEmpty.hidden = true;
 
-    const dataUrl = captureCanvas.toDataURL('image/jpeg', 0.93);
-    preview.src = dataUrl; preview.hidden = false; previewEmpty.hidden = true;
-    captureCount += 1; countEl.textContent = captureCount;
+    captureCount++;
+    countEl.textContent = captureCount;
+    qualityEl.textContent = 'captura 630 × 880';
 
-    const sharpness = sharpnessFromCanvas(captureCanvas);
-    qualityEl.textContent = sharpness > 18 ? 'nitidez boa' : sharpness > 10 ? 'nitidez média' : 'verifique o foco';
-
-    locked = true; stableDetections = 0; emptyDetections = 0; previousQuad = null;
-    frame.classList.remove('stable'); frame.classList.add('captured');
+    locked = true;
+    unlockFrames = 0;
+    stableFrames = 0;
+    frame.classList.remove('detected','ready');
+    frame.classList.add('captured');
     setTimeout(() => frame.classList.remove('captured'), 320);
-    setStatus('Capturado — retire a carta completamente');
-    await beep();
-  }
 
-  async function manualCapture() {
-    if (currentCandidate) return captureCandidate(currentCandidate);
-    alert('Nenhuma carta foi detectada. Posicione uma carta dentro da moldura antes da captura manual.');
+    setStatus('Capturado — retire a carta');
+    await beep();
   }
 
   function analyze(now) {
     if (!running) return;
     requestAnimationFrame(analyze);
-    if (now - lastAnalysisAt < ANALYSIS_INTERVAL) return;
-    lastAnalysisAt = now;
 
-    if (!cvReady) {
-      currentCandidate = null;
-      clearDetectionUI();
-      setStatus('Câmera ativa — aguardando detector geométrico…');
-      return;
-    }
+    // Aproximadamente 4 análises por segundo: suficiente e muito leve.
+    if (now - lastAnalyzeAt < 250) return;
+    lastAnalyzeAt = now;
 
-    const candidate = detectCard();
-    currentCandidate = candidate;
+    const gray = getGrayFrame();
+    if (!gray) return;
+
+    const result = detectCard(gray);
+    const movement = result.detected ? edgeMovement(result.edges) : 999;
 
     if (locked) {
-      if (!candidate) emptyDetections++; else emptyDetections = 0;
-      if (emptyDetections >= REQUIRED_EMPTY_DETECTIONS_TO_UNLOCK) {
-        locked = false; emptyDetections = 0; previousQuad = null; stableDetections = 0;
-        clearDetectionUI();
+      // Libera quando deixa de detectar a mesma carta ou quando as bordas mudam muito.
+      if (!result.detected || movement > 12) unlockFrames++;
+      else unlockFrames = 0;
+
+      if (unlockFrames >= 2) {
+        locked = false;
+        unlockFrames = 0;
+        prevEdges = null;
         setStatus('Pronto para a próxima carta');
-      } else {
-        if (candidate) updateDetectionUI(candidate, false);
       }
+
+      confidenceEl.textContent = result.confidence + '%';
+      ratioEl.textContent = result.ratio ? result.ratio.toFixed(3) : '—';
+      cardStateEl.textContent = result.detected ? 'retire a carta' : 'trocando';
+      stabilityEl.textContent = 'bloqueada';
+      prevEdges = result.detected ? result.edges : null;
       return;
     }
 
-    if (!candidate) {
-      stableDetections = 0; previousQuad = null; clearDetectionUI();
-      setStatus('Nenhuma carta detectada');
-      return;
+    updateUI(result, movement);
+
+    if (result.detected && autoToggle.checked && stableFrames >= 4) {
+      capture();
     }
 
-    const movement = averageCornerMovement(candidate.quad, previousQuad);
-    const stableLimit = Number(cornerThreshold.value);
-    if (movement <= stableLimit) stableDetections++; else stableDetections = 1;
-    previousQuad = candidate.quad;
-
-    const stable = stableDetections >= REQUIRED_STABLE_DETECTIONS;
-    updateDetectionUI(candidate, stable);
-    setStatus(stable ? 'Carta detectada e estável' : 'Carta detectada — segure');
-
-    if (stable && autoToggle.checked) captureCandidate(candidate);
+    prevEdges = result.detected ? result.edges : null;
   }
 
   async function startCamera() {
+    setStatus('Clique recebido — solicitando câmera…');
+    startBtn.disabled = true;
+
     try {
-      setStatus('Clique recebido — solicitando acesso à câmera…');
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('getUserMedia não está disponível neste navegador/contexto.');
-      }
-      startBtn.disabled = true;
-      startBtn.textContent = 'Abrindo câmera…';
       audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+
       stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
       });
-      video.srcObject = stream; await video.play();
-      running = true; manualBtn.disabled = false; startBtn.textContent = 'Câmera ativa';
-      resizeOverlay(); clearDetectionUI();
-      setStatus(cvReady ? 'Procurando uma carta…' : 'Câmera ativa — aguardando detector geométrico…');
+
+      video.srcObject = stream;
+      await video.play();
+
+      running = true;
+      manualBtn.disabled = false;
+      startBtn.textContent = 'Câmera ativa';
+      setCameraState('Câmera ativa', 'ok');
+      setStatus('Procure uma carta dentro da moldura');
       requestAnimationFrame(analyze);
+
     } catch (err) {
       console.error(err);
       startBtn.disabled = false;
-      startBtn.textContent = 'Tentar novamente';
-      setStatus('Não foi possível abrir a câmera — ' + (err?.name || 'erro'));
-      alert('Não foi possível abrir a câmera.\n\nUse a página HTTPS do GitHub Pages e permita o acesso à câmera.\n\nDetalhe: ' + (err?.message || err));
+      setCameraState('Falha ao abrir câmera', 'error');
+      setStatus('Não foi possível abrir a câmera');
+      alert('Falha ao abrir a câmera:\n\n' + (err?.name || '') + '\n' + (err?.message || err));
     }
   }
 
-  window.startMtgCamera = startCamera;
-  // O botão usa onclick inline como fallback robusto. Não adicionamos outro listener
-  // para evitar disparo duplo em navegadores móveis.
-  manualBtn.addEventListener('click', manualCapture);
-  window.addEventListener('resize', resizeOverlay);
-  window.addEventListener('beforeunload', () => stream?.getTracks().forEach(t => t.stop()));
+  startBtn.addEventListener('click', startCamera);
+  manualBtn.addEventListener('click', capture);
+
+  window.addEventListener('beforeunload', () => {
+    stream?.getTracks().forEach(t => t.stop());
+  });
 })();
