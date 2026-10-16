@@ -22,6 +22,7 @@ const edgeValue=$('edgeValue'),confidenceValue=$('confidenceValue'),stableValue=
 const recognitionEmpty=$('recognitionEmpty'),recognitionResult=$('recognitionResult'),recognitionBadge=$('recognitionBadge'),recognitionLevel=$('recognitionLevel');
 const recognizedName=$('recognizedName'),recognizedPrinting=$('recognizedPrinting'),scryfallImage=$('scryfallImage');
 const ocrNameText=$('ocrNameText'),ocrFooterText=$('ocrFooterText'),parsedSet=$('parsedSet'),parsedNumber=$('parsedNumber'),parsedLang=$('parsedLang'),scryfallState=$('scryfallState');
+const nameCandidatesText=$('nameCandidatesText'),scryfallQueryText=$('scryfallQueryText'),manualNameInput=$('manualNameInput'),manualLookupBtn=$('manualLookupBtn');
 const ocrProgress=$('ocrProgress'),ocrPercent=$('ocrPercent'),ocrProgressBar=$('ocrProgressBar'),ocrProgressText=$('ocrProgressText');
 
 const analysisCanvas=$('analysisCanvas'),actx=analysisCanvas.getContext('2d',{willReadFrequently:true});
@@ -611,39 +612,221 @@ function cropAndPreprocess(srcCanvas,dstCanvas,xFrac,yFrac,wFrac,hFrac,threshold
   ctx.putImageData(img,0,0);
 }
 
-function cleanNameText(t){return (t||'').replace(/\n+/g,' ').replace(/[|_~`©®™]/g,' ').replace(/\s{2,}/g,' ').replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9'’:\- ,.!]+$/g,'').trim()}
-function cleanFooterText(t){return (t||'').replace(/\n+/g,' ').replace(/[|_~`©®™]/g,' ').replace(/\s{2,}/g,' ').trim().toUpperCase()}
-const LANGS=new Set(['EN','PT','ES','FR','DE','IT','JA','JP','KO','RU','ZH','ZHS','ZHT','PH']);
-const STOP_CODES=new Set(['EN','PT','ES','FR','DE','IT','JA','JP','KO','RU','ZH','ZHS','ZHT','ART','ILLUS','WOTC']);
+function cleanNameText(t){
+  return (t||'')
+    .replace(/\n+/g,' ')
+    .replace(/[|_~`©®™“”"]/g,' ')
+    .replace(/[{}\[\]]/g,' ')
+    .replace(/\s{2,}/g,' ')
+    .replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9'’:\- ,.!]+$/g,'')
+    .trim();
+}
+
+function cleanFooterText(t){
+  return (t||'')
+    .replace(/\n+/g,' ')
+    .replace(/[|_~`©®™]/g,' ')
+    .replace(/\s{2,}/g,' ')
+    .trim()
+    .toUpperCase();
+}
+
+const STOP_CODES=new Set([
+  'EN','PT','ES','FR','DE','IT','JA','JP','KO','RU','ZH','ZHS','ZHT',
+  'ART','ILLUS','WOTC','WIZARDS','THE','MAGIC'
+]);
+
 function parseFooter(text){
   const upper=cleanFooterText(text);
   const lang=(upper.match(/\b(EN|PT|ES|FR|DE|IT|JA|JP|KO|RU|ZHS|ZHT|ZH)\b/)||[])[1]||'';
+
   let number='';
   const slash=upper.match(/\b(\d{1,4}[A-Z]?)\s*\/\s*\d{1,4}\b/);
   if(slash)number=slash[1];
+
   if(!number){
-    const candidates=[...upper.matchAll(/\b(\d{1,4}[A-Z]?)\b/g)].map(m=>m[1]).filter(x=>{const n=parseInt(x,10);return n>0&&n<1000});
+    const candidates=[...upper.matchAll(/\b(\d{1,4}[A-Z]?)\b/g)]
+      .map(m=>m[1])
+      .filter(x=>{
+        const n=parseInt(x,10);
+        return n>0&&n<1000;
+      });
     number=candidates.length?candidates[0]:'';
   }
-  const codes=[...upper.matchAll(/\b([A-Z0-9]{3,5})\b/g)].map(m=>m[1]).filter(x=>!STOP_CODES.has(x)&&!/^\d+$/.test(x)&&!/\d{4}/.test(x));
-  const set=codes.length?codes[0]:'';
+
+  const alphaCodes=[...upper.matchAll(/\b([A-Z]{3})\b/g)]
+    .map(m=>m[1])
+    .filter(x=>!STOP_CODES.has(x));
+
+  const mixedCodes=[...upper.matchAll(/\b([A-Z0-9]{3,5})\b/g)]
+    .map(m=>m[1])
+    .filter(x=>!STOP_CODES.has(x)&&!/^\d+$/.test(x)&&!/\d{4}/.test(x));
+
+  const set=alphaCodes[0]||mixedCodes[0]||'';
   return{raw:upper,set,number,lang};
 }
 
-async function scryfallFetch(url){const r=await fetch(url,{headers:{'Accept':'application/json'}});if(!r.ok)throw new Error('Scryfall '+r.status);return r.json()}
-async function resolveScryfall(name,footer){
-  // First, if OCR yielded plausible set + collector number, try exact printing.
-  if(footer.set&&footer.number){
+function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
+
+function normalizeCandidateName(name){
+  let s=cleanNameText(name);
+  s=s.replace(/\s+(?:\d{0,2}\s*)?(?:[WUBRGCXYZ]\s*){1,6}$/i,'').trim();
+  s=s.replace(/^(?:[Il1|]\s+)+/,'').replace(/\s+(?:[Il1|])$/,'').trim();
+  s=s.replace(/[.,;:!]+$/,'').trim();
+  return s;
+}
+
+function makeNameCandidates(readings){
+  const out=[];
+  const add=v=>{
+    v=normalizeCandidateName(v);
+    if(v.length<2)return;
+    if(!out.some(x=>x.toLowerCase()===v.toLowerCase()))out.push(v);
+  };
+
+  for(const r of readings){
+    add(r.text);
+    add((r.text||'').replace(/\s+[0-9WUBRGCXYZ]{1,6}$/i,''));
+
+    const tokens=cleanNameText(r.text).split(/\s+/);
+    if(tokens.length>=2){
+      for(let cut=1;cut<=Math.min(2,tokens.length-1);cut++){
+        const tail=tokens.slice(-cut).join('');
+        if(/^[0-9WUBRGCXYZIl|]{1,6}$/i.test(tail)){
+          add(tokens.slice(0,-cut).join(' '));
+        }
+      }
+    }
+  }
+
+  return out.slice(0,6);
+}
+
+async function scryfallFetch(url){
+  const r=await fetch(url,{
+    headers:{
+      'Accept':'application/json;q=0.9,*/*;q=0.8'
+    }
+  });
+
+  if(!r.ok){
+    let detail='';
     try{
-      const c=await scryfallFetch(`https://api.scryfall.com/cards/${encodeURIComponent(footer.set.toLowerCase())}/${encodeURIComponent(footer.number)}`);
-      return{card:c,level:'exact-printing'};
+      const body=await r.json();
+      detail=body?.details||body?.code||'';
     }catch(_){}
+    throw new Error(`Scryfall ${r.status}${detail?': '+detail:''}`);
   }
-  if(name){
-    const c=await scryfallFetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(name)}`);
-    return{card:c,level:'name'};
+
+  return r.json();
+}
+
+async function resolveByExactPrinting(footer){
+  if(!footer.set||!footer.number)return null;
+
+  const url=`https://api.scryfall.com/cards/${encodeURIComponent(footer.set.toLowerCase())}/${encodeURIComponent(footer.number)}`;
+
+  try{
+    const card=await scryfallFetch(url);
+    return{
+      card,
+      level:'exact-printing',
+      strategy:`set+número: ${footer.set.toUpperCase()} #${footer.number}`,
+      url
+    };
+  }catch(_){
+    return null;
   }
-  throw new Error('OCR não produziu um nome utilizável');
+}
+
+async function fuzzyNameLookup(name){
+  const url=`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(name)}`;
+  const card=await scryfallFetch(url);
+  return{
+    card,
+    level:'name',
+    strategy:`fuzzy: ${name}`,
+    url
+  };
+}
+
+async function exactNameLookup(name){
+  const url=`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}`;
+  const card=await scryfallFetch(url);
+  return{
+    card,
+    level:'name-exact',
+    strategy:`nome exato: ${name}`,
+    url
+  };
+}
+
+async function autocompleteLookup(name){
+  const words=name.split(/\s+/).filter(Boolean);
+  const queries=[name];
+
+  if(words.length>=3)queries.push(words.slice(0,-1).join(' '));
+  if(words.length>=2)queries.push(words.slice(0,2).join(' '));
+
+  for(const q of queries){
+    if(q.length<3)continue;
+
+    const url=`https://api.scryfall.com/cards/autocomplete?q=${encodeURIComponent(q)}`;
+
+    try{
+      const data=await scryfallFetch(url);
+      const suggestions=(data?.data||[]).slice(0,8);
+      if(!suggestions.length)continue;
+
+      const qLower=q.toLowerCase();
+      suggestions.sort((a,b)=>{
+        const as=a.toLowerCase().startsWith(qLower)?0:1;
+        const bs=b.toLowerCase().startsWith(qLower)?0:1;
+        return as-bs || Math.abs(a.length-name.length)-Math.abs(b.length-name.length);
+      });
+
+      const chosen=suggestions[0];
+      await sleep(130);
+
+      const exact=await exactNameLookup(chosen);
+      exact.strategy=`autocomplete "${q}" → ${chosen}`;
+      exact.level='name-autocomplete';
+      return exact;
+
+    }catch(_){}
+
+    await sleep(130);
+  }
+
+  return null;
+}
+
+async function resolveScryfall(nameCandidates,footer){
+  const attempts=[];
+
+  const exactPrinting=await resolveByExactPrinting(footer);
+  if(exactPrinting)return exactPrinting;
+
+  for(const name of nameCandidates){
+    try{
+      const result=await fuzzyNameLookup(name);
+      attempts.push(`✓ fuzzy: ${name}`);
+      return result;
+    }catch(_){
+      attempts.push(`× fuzzy: ${name}`);
+    }
+    await sleep(130);
+  }
+
+  for(const name of nameCandidates.slice(0,3)){
+    const result=await autocompleteLookup(name);
+    if(result)return result;
+    await sleep(130);
+  }
+
+  const err=new Error('Nenhum candidato de nome foi aceito pelo Scryfall');
+  err.attempts=attempts;
+  throw err;
 }
 
 function cardImageUri(card){
@@ -651,74 +834,221 @@ function cardImageUri(card){
   const face=card.card_faces?.find(f=>f.image_uris?.normal);
   return face?.image_uris?.normal||'';
 }
-function showRecognition(nameRaw,footerRaw,footer,resolved){
-  recognitionEmpty.hidden=true;recognitionResult.hidden=false;
-  ocrNameText.textContent=nameRaw||'—';ocrFooterText.textContent=footerRaw||'—';
-  parsedSet.textContent=footer.set||'—';parsedNumber.textContent=footer.number||'—';parsedLang.textContent=footer.lang||'—';
+function showRecognition(nameRaw,footerRaw,footer,resolved,candidates=[]){
+  recognitionEmpty.hidden=true;
+  recognitionResult.hidden=false;
+
+  ocrNameText.textContent=nameRaw||'—';
+  ocrFooterText.textContent=footerRaw||'—';
+  nameCandidatesText.textContent=candidates.length?candidates.join('\n'):'—';
+  scryfallQueryText.textContent=resolved.strategy||'—';
+
+  parsedSet.textContent=footer.set||'—';
+  parsedNumber.textContent=footer.number||'—';
+  parsedLang.textContent=footer.lang||'—';
+
   const card=resolved.card;
   recognizedName.textContent=card.name||'—';
-  recognizedPrinting.textContent=resolved.level==='exact-printing'?`${card.set_name} · ${card.set?.toUpperCase()} #${card.collector_number}`:`Nome identificado · impressão ainda não confirmada`;
-  recognitionLevel.textContent=resolved.level==='exact-printing'?'IMPressão exata encontrada':'carta identificada pelo nome';
-  recognitionBadge.textContent=resolved.level==='exact-printing'?'exata':'nome';
+
+  const exact=resolved.level==='exact-printing';
+
+  recognizedPrinting.textContent=exact
+    ? `${card.set_name} · ${card.set?.toUpperCase()} #${card.collector_number}`
+    : `Nome identificado · ${card.set_name||'impressão ainda não confirmada'}`;
+
+  recognitionLevel.textContent=exact
+    ? 'IMPRESSÃO EXATA ENCONTRADA'
+    : 'CARTA IDENTIFICADA PELO NOME';
+
+  recognitionBadge.textContent=exact?'exata':'nome';
   scryfallState.textContent='encontrado';
-  const img=cardImageUri(card);if(img){scryfallImage.src=img;scryfallImage.hidden=false;scryfallImage.alt=card.name}
+  manualNameInput.value=card.name||candidates[0]||'';
+
+  const img=cardImageUri(card);
+  if(img){
+    scryfallImage.src=img;
+    scryfallImage.hidden=false;
+    scryfallImage.alt=card.name;
+  }
 }
 
 async function analyzeCapturedCard(){
   if(!lastCaptured||ocrBusy)return;
+
   ocrBusy=true;
   recognitionBadge.textContent='analisando';
   scryfallState.textContent='—';
+  nameCandidatesText.textContent='—';
+  scryfallQueryText.textContent='—';
+
   try{
     const worker=await ensureOcr();
-    // Name box: approximately modern-frame title region, intentionally generous.
-    cropAndPreprocess(captureCanvas,nameOcrCanvas,.045,.035,.91,.115,'adaptive');
-    // Footer: collector info / language / set area. Intentionally generous.
-    cropAndPreprocess(captureCanvas,footerOcrCanvas,.035,.825,.93,.145,'binary');
 
-    ocrProgress.hidden=false;
-    ocrProgressText.textContent='Lendo nome da carta…';
+    const titlePasses=[
+      {x:.035,y:.030,w:.74,h:.100,mode:'adaptive',label:'nome estreito'},
+      {x:.035,y:.025,w:.80,h:.115,mode:'binary',label:'nome binário'},
+      {x:.025,y:.020,w:.86,h:.125,mode:'adaptive',label:'nome amplo'}
+    ];
+
+    const readings=[];
+
     await worker.setParameters({
       tessedit_pageseg_mode:'7',
-      preserve_interword_spaces:'1'
+      preserve_interword_spaces:'1',
+      tessedit_char_whitelist:"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'’,:.- "
     });
-    const nres=await worker.recognize(nameOcrCanvas);
-    const nameRaw=cleanNameText(nres.data.text);
+
+    for(let i=0;i<titlePasses.length;i++){
+      const pass=titlePasses[i];
+
+      cropAndPreprocess(
+        captureCanvas,
+        nameOcrCanvas,
+        pass.x,
+        pass.y,
+        pass.w,
+        pass.h,
+        pass.mode
+      );
+
+      ocrProgress.hidden=false;
+      ocrProgressText.textContent=`Lendo nome (${i+1}/${titlePasses.length})…`;
+
+      const result=await worker.recognize(nameOcrCanvas);
+
+      readings.push({
+        text:cleanNameText(result.data.text),
+        confidence:Number(result.data.confidence||0),
+        label:pass.label
+      });
+    }
+
+    readings.sort((a,b)=>b.confidence-a.confidence);
+
+    const nameCandidates=makeNameCandidates(readings);
+    const bestName=nameCandidates[0]||readings[0]?.text||'';
 
     ocrProgressText.textContent='Lendo faixa inferior…';
+
+    cropAndPreprocess(
+      captureCanvas,
+      footerOcrCanvas,
+      .025,
+      .820,
+      .95,
+      .155,
+      'adaptive'
+    );
+
     await worker.setParameters({
       tessedit_pageseg_mode:'6',
       preserve_interword_spaces:'1',
       tessedit_char_whitelist:'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789/•.- '
     });
-    const fres=await worker.recognize(footerOcrCanvas);
-    const footerRaw=cleanFooterText(fres.data.text);
+
+    const footerResult=await worker.recognize(footerOcrCanvas);
+    const footerRaw=cleanFooterText(footerResult.data.text);
     const footer=parseFooter(footerRaw);
 
+    ocrNameText.textContent=bestName||'—';
+    ocrFooterText.textContent=footerRaw||'—';
+    nameCandidatesText.textContent=nameCandidates.length?nameCandidates.join('\n'):'—';
+
+    parsedSet.textContent=footer.set||'—';
+    parsedNumber.textContent=footer.number||'—';
+    parsedLang.textContent=footer.lang||'—';
+
     ocrProgressText.textContent='Consultando Scryfall…';
-    const resolved=await resolveScryfall(nameRaw,footer);
-    showRecognition(nameRaw,footerRaw,footer,resolved);
+
+    const resolved=await resolveScryfall(nameCandidates,footer);
+
+    showRecognition(
+      bestName,
+      footerRaw,
+      footer,
+      resolved,
+      nameCandidates
+    );
+
     ocrProgressText.textContent='Concluído';
-    ocrPercent.textContent='100%';ocrProgressBar.style.width='100%';
+    ocrPercent.textContent='100%';
+    ocrProgressBar.style.width='100%';
+
     await beep(resolved.level==='exact-printing'?1120:1020);
+
   }catch(err){
     console.error(err);
-    recognitionEmpty.hidden=true;recognitionResult.hidden=false;
+
+    recognitionEmpty.hidden=true;
+    recognitionResult.hidden=false;
     recognitionBadge.textContent='não identificado';
     recognitionLevel.textContent='OCR / Scryfall não fecharam a identificação';
     recognizedName.textContent='Não identificado';
-    recognizedPrinting.textContent='Tente reanalisar com melhor foco ou reposicione a carta.';
+    recognizedPrinting.textContent='Veja os candidatos de OCR abaixo ou corrija o nome manualmente.';
     scryfallState.textContent='falhou';
+
+    if(err?.attempts?.length){
+      scryfallQueryText.textContent=err.attempts.join('\n');
+    }else{
+      scryfallQueryText.textContent=err?.message||'falha desconhecida';
+    }
+
     ocrProgressText.textContent='Falha: '+(err?.message||err);
     ocrStatus.textContent='OCR: pronto para nova tentativa';
     setDot(ocrDot,'warn');
-  }finally{ocrBusy=false}
+
+  }finally{
+    ocrBusy=false;
+  }
 }
+
+manualLookupBtn.addEventListener('click',async()=>{
+  const name=normalizeCandidateName(manualNameInput.value);
+  if(!name)return;
+
+  manualLookupBtn.disabled=true;
+  recognitionBadge.textContent='buscando';
+  scryfallState.textContent='consultando';
+
+  try{
+    let resolved;
+
+    try{
+      resolved=await exactNameLookup(name);
+    }catch(_){
+      await sleep(130);
+      resolved=await fuzzyNameLookup(name);
+    }
+
+    const footer={
+      set:parsedSet.textContent==='—'?'':parsedSet.textContent,
+      number:parsedNumber.textContent==='—'?'':parsedNumber.textContent,
+      lang:parsedLang.textContent==='—'?'':parsedLang.textContent
+    };
+
+    showRecognition(
+      name,
+      ocrFooterText.textContent==='—'?'':ocrFooterText.textContent,
+      footer,
+      resolved,
+      [name]
+    );
+
+  }catch(err){
+    scryfallState.textContent='não encontrado';
+    scryfallQueryText.textContent=err?.message||String(err);
+    recognitionBadge.textContent='falhou';
+
+  }finally{
+    manualLookupBtn.disabled=false;
+  }
+});
 
 reanalyzeBtn.addEventListener('click',analyzeCapturedCard);
 
 switchCameraBtn.addEventListener('click',async()=>{
   const id=cameraSelect.value;
+  try{if(id)localStorage.setItem('mtg-camera-device',id)}catch(_){}
   switchCameraBtn.disabled=true;
   setStatus('Trocando câmera…');
   try{await openCamera(id)}catch(err){console.error(err);setStatus('Não foi possível abrir a câmera selecionada')}finally{switchCameraBtn.disabled=false}

@@ -1,4 +1,4 @@
-# Acervo MTG — Scanner v0.3.5
+# Acervo MTG — Scanner v0.3.6
 
 Versão de ajuste óptico do scanner.
 
@@ -75,7 +75,7 @@ Substitua:
 - manifest.webmanifest
 - README.md
 
-Confirme `Scanner v0.3.5`.
+Confirme `Scanner v0.3.6`.
 
 ## Dependências externas
 
@@ -83,7 +83,7 @@ Tesseract.js v5 é carregado sob demanda via jsDelivr.
 Scryfall é consultado diretamente pelo navegador.
 
 
-## Ajuste v0.3.5
+## Ajuste v0.3.6
 
 O tamanho mínimo da moldura foi reduzido de 48% para 35%.
 
@@ -94,7 +94,7 @@ Faixa atual:
 Isso permite afastar mais o celular da carta para buscar uma distância de foco melhor.
 
 
-## Ajuste v0.3.5 — toque para focar
+## Ajuste v0.3.6 — toque para focar
 
 A moldura padrão passa a ser 45%.
 
@@ -116,7 +116,7 @@ Um quadrado aparece no ponto tocado para confirmar a interação.
 Em `Ajustes da câmera`, a linha `Toque para focar` informa o nível de suporte disponível no aparelho.
 
 
-## Ajuste v0.3.5 — fotografia real
+## Ajuste v0.3.6 — fotografia real
 
 Esta versão testa `ImageCapture.takePhoto()`.
 
@@ -157,7 +157,7 @@ O dado decisivo é comparar o rodapé:
 Se a fotografia real ainda ficar muito abaixo do app nativo da câmera, o próximo passo recomendado é encerrar o protótipo web e migrar para Android CameraX.
 
 
-## Ajuste v0.3.5 — Modo Máximo Web
+## Ajuste v0.3.6 — Modo Máximo Web
 
 Novidades:
 - seleção explícita da câmera física via enumerateDevices + deviceId;
@@ -169,3 +169,35 @@ Novidades:
 - limite interno do recorte aumentado de 2100 px para 3000 px.
 
 Teste cada câmera traseira listada e compare Capacidade anunciada, Stream real, Resize mode real e o rodapé da carta.
+
+
+## Ajuste v0.3.6 — OCR robusto + Scryfall
+
+A câmera escolhida pode ser lembrada pelo navegador.
+
+### OCR do nome
+São feitas três leituras:
+1. recorte estreito, excluindo o custo de mana;
+2. recorte binarizado;
+3. recorte um pouco mais amplo.
+
+Os resultados geram uma lista curta de candidatos.
+
+### Busca no Scryfall
+A estratégia é:
+1. set + collector number, se parecerem confiáveis;
+2. fuzzy para cada candidato;
+3. autocomplete com prefixos;
+4. busca exata da sugestão escolhida.
+
+As requisições são espaçadas.
+
+### Diagnóstico
+A tela mostra:
+- candidatos do OCR;
+- estratégia de consulta;
+- texto bruto do rodapé.
+
+Também há um campo para corrigir o nome manualmente. Isso separa claramente:
+- falha de OCR;
+- falha de acesso/consulta ao Scryfall.

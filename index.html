@@ -4,17 +4,17 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#101318" />
-  <title>Acervo MTG — Scanner v0.3.5</title>
-  <link rel="manifest" href="manifest.webmanifest?v=035" />
-  <link rel="stylesheet" href="styles.css?v=035" />
+  <title>Acervo MTG — Scanner v0.3.6</title>
+  <link rel="manifest" href="manifest.webmanifest?v=036" />
+  <link rel="stylesheet" href="styles.css?v=036" />
 </head>
 <body>
   <main class="app">
     <header>
       <div>
         <p class="eyebrow">ACERVO MTG</p>
-        <h1>Scanner v0.3.5</h1>
-        <p class="sub">Modo Máximo Web + OCR</p>
+        <h1>Scanner v0.3.6</h1>
+        <p class="sub">OCR robusto + Scryfall</p>
       </div>
       <div class="counter">
         <span id="count">0</span>
@@ -112,6 +112,25 @@
           </div>
         </div>
 
+        <div class="ocr-debug">
+          <div>
+            <small>Candidatos de nome</small>
+            <code id="nameCandidatesText">—</code>
+          </div>
+          <div>
+            <small>Consulta / estratégia Scryfall</small>
+            <code id="scryfallQueryText">—</code>
+          </div>
+        </div>
+
+        <div class="manual-lookup">
+          <label>
+            Corrigir nome manualmente
+            <input id="manualNameInput" type="text" autocomplete="off" placeholder="Ex.: Thief of Sanity" />
+          </label>
+          <button id="manualLookupBtn" class="secondary full" type="button">Buscar este nome no Scryfall</button>
+        </div>
+
         <div class="parsed-grid">
           <div><small>Set detectado</small><strong id="parsedSet">—</strong></div>
           <div><small>Collector nº</small><strong id="parsedNumber">—</strong></div>
@@ -198,7 +217,7 @@
 
     <section class="notes">
       <h2>Objetivo desta versão</h2>
-      <p>Esta versão testa o máximo que o navegador consegue expor: seleção da câmera física, resolução nativa sem crop-and-scale quando possível e captura fotográfica real. Quando <code>ImageCapture.takePhoto()</code> estiver disponível, o detector continua usando o vídeo leve, mas a imagem enviada ao OCR vem de uma exposição fotográfica em resolução maior. Se o recurso não existir ou falhar, o scanner usa automaticamente o frame de vídeo anterior.</p>
+      <p>Agora a câmera já não é o único foco: o nome é lido em múltiplos recortes e pré-processamentos. O sistema remove a região de mana do título, gera candidatos alternativos e tenta o Scryfall em cascata. O objetivo desta versão é descobrir se a falha vinha da qualidade da imagem ou da interpretação do OCR.</p>
     </section>
 
     <canvas id="analysisCanvas" width="240" height="336" hidden></canvas>
@@ -207,6 +226,6 @@
     <canvas id="footerOcrCanvas" width="1800" height="300" hidden></canvas>
   </main>
 
-  <script src="app.js?v=035"></script>
+  <script src="app.js?v=036"></script>
 </body>
 </html>
