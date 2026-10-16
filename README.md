@@ -1,52 +1,69 @@
-# Acervo MTG — Scanner v0.2.5
+# Acervo MTG — Scanner v0.3.0
 
-## Objetivo desta versão
+Primeira versão que tenta identificar a carta.
 
-Melhorar a legibilidade da parte inferior da carta antes de avançar para OCR.
+## Fluxo
 
-### Mudanças
-- solicita câmera traseira com resolução ideal 1920 × 1080;
-- aceita até 3840 × 2160 se o aparelho/navegador decidir fornecer;
-- mostra a resolução REAL do stream;
-- consulta capacidades da câmera com `getCapabilities()`;
-- solicita `focusMode: continuous` quando disponível;
-- oferece slider de zoom quando o navegador expõe essa capacidade;
-- calcula uma métrica de nitidez especificamente na faixa inferior;
-- captura automática somente após:
-  - carta detectada;
-  - carta estável;
-  - faixa inferior acima do limiar de nitidez;
-- aumenta o arquivo recortado para 1260 × 1760.
+1. detector leve encontra a carta;
+2. espera estabilidade + nitidez;
+3. captura;
+4. carrega Tesseract.js somente na primeira análise;
+5. OCR da faixa de nome;
+6. OCR da faixa inferior;
+7. tenta extrair:
+   - nome;
+   - set;
+   - collector number;
+   - idioma;
+8. consulta Scryfall:
+   - primeiro tenta `set + collector number`;
+   - se isso falhar, faz busca fuzzy pelo nome;
+9. exibe:
+   - carta identificada;
+   - ou impressão exata, quando houver dados suficientes.
 
-## Importante
+## Por que o OCR não roda em vídeo
 
-Aumentar o canvas de saída não cria detalhe que a câmera não capturou. O indicador "Stream real" é o dado mais importante.
+Tesseract.js usa WebAssembly + Web Worker e é mais pesado que o detector leve.
+Rodá-lo somente após a captura evita o problema de travamento que tivemos com OpenCV contínuo.
 
-Se o navegador estiver entregando somente 1280 × 720, o texto muito pequeno terá limite físico.
+## Primeira utilização
 
-## Teste
+A primeira análise demora mais porque o navegador precisa baixar:
+- Tesseract.js;
+- core WebAssembly;
+- dados do idioma inglês.
 
-1. Abra a câmera.
-2. Veja `Stream real`.
-3. Coloque a carta na moldura.
-4. Observe `Nitidez da faixa inferior`.
-5. Quando a carta estiver estável mas a nitidez estiver baixa, o app mostrará:
-   `Carta estável — aguardando foco na faixa inferior`.
-6. Quando atingir o limiar:
-   `Carta estável e nítida`.
-7. A captura ocorre.
+Nas análises seguintes, o worker é reutilizado.
 
-## Ajuste
+## O que testar
 
-Se nenhuma carta captura mesmo parecendo bem focada:
-- reduza `Nitidez mínima da faixa inferior` de 8 para 6.
+Use primeiro cartas modernas, em inglês, sem sleeve e com boa iluminação.
 
-Se estiver capturando com texto borrado:
-- aumente para 10 ou 12.
+Anote para cada carta:
+- OCR do nome;
+- OCR do rodapé;
+- se encontrou nome no Scryfall;
+- se encontrou impressão exata.
 
-## Próxima etapa
+## Limitação esperada
 
-Depois de validar a nitidez:
-- OCR da faixa de nome;
-- OCR da região inferior;
-- matching com Scryfall.
+Nesta etapa, acertar o nome é mais importante que acertar a impressão.
+
+A impressão exata depende muito mais do texto minúsculo do rodapé. Se isso continuar instável, a próxima melhoria será captura fotográfica em resolução máxima / matching visual da arte.
+
+## GitHub Pages
+
+Substitua:
+- index.html
+- app.js
+- styles.css
+- manifest.webmanifest
+- README.md
+
+Confirme `Scanner v0.3.0`.
+
+## Dependências externas
+
+Tesseract.js v5 é carregado sob demanda via jsDelivr.
+Scryfall é consultado diretamente pelo navegador.
