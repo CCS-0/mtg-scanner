@@ -1,4 +1,4 @@
-# Acervo MTG — Scanner v0.3.1
+# Acervo MTG — Scanner v0.3.2
 
 Versão de ajuste óptico do scanner.
 
@@ -75,9 +75,20 @@ Substitua:
 - manifest.webmanifest
 - README.md
 
-Confirme `Scanner v0.3.1`.
+Confirme `Scanner v0.3.2`.
 
 ## Dependências externas
 
 Tesseract.js v5 é carregado sob demanda via jsDelivr.
 Scryfall é consultado diretamente pelo navegador.
+
+
+## Ajuste v0.3.2
+
+O tamanho mínimo da moldura foi reduzido de 48% para 35%.
+
+Faixa atual:
+- mínimo: 35%
+- máximo: 76%
+
+Isso permite afastar mais o celular da carta para buscar uma distância de foco melhor.

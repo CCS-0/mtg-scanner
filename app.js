@@ -44,7 +44,7 @@ function applyFrameSize(){
 }
 try{
   const saved=Number(localStorage.getItem('mtg-frame-size'));
-  if(saved>=48 && saved<=76) frameSizeSlider.value=String(saved);
+  if(saved>=35 && saved<=76) frameSizeSlider.value=String(saved);
 }catch(_){}
 applyFrameSize();
 frameSizeSlider.addEventListener('input',applyFrameSize);
