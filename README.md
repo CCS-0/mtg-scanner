@@ -1,4 +1,4 @@
-# Acervo MTG — Scanner v0.2.2
+# Acervo MTG — Scanner v0.2.3
 
 Esta versão corrige o principal problema observado na v0.1: **uma cena qualquer, apenas por ficar estável, não deve mais disparar uma captura**.
 
@@ -79,12 +79,12 @@ A v0.2 reconhece **geometria de carta**, ainda não reconhece que o conteúdo é
 A próxima etapa (v0.3) será a validação semântica: ler a faixa do nome e/ou a linha de coleção/collector number via OCR antes de considerar a captura válida.
 
 
-## Correção v0.2.2
+## Correção v0.2.3
 
 A câmera não depende mais da inicialização do OpenCV. O botão `Iniciar câmera` fica disponível imediatamente. O detector geométrico inicializa em paralelo e o status da tela informa separadamente se a câmera e o detector estão prontos. Isso evita que uma falha ou demora do OpenCV impeça a câmera de abrir.
 
 
-## Diagnóstico v0.2.2
+## Diagnóstico v0.2.3
 
 Ao tocar em **Iniciar câmera**, o status deve mudar imediatamente para `Clique recebido — iniciando câmera…`.
 
@@ -93,3 +93,12 @@ Ao tocar em **Iniciar câmera**, o status deve mudar imediatamente para `Clique 
 - Se aparecer `Clique recebido — solicitando acesso à câmera…`, o JavaScript está funcionando e o próximo diagnóstico é a permissão/API da câmera.
 
 Os arquivos `app.js` e `styles.css` usam `?v=022` no HTML para evitar cache antigo do GitHub Pages/navegador.
+
+
+## Correção v0.2.3
+
+- Corrige condição de corrida na inicialização do OpenCV.js.
+- Define `Module.onRuntimeInitialized` antes de carregar o OpenCV, conforme o padrão oficial.
+- Fixa o OpenCV em 4.13.0 para evitar mudança silenciosa do alias `4.x`.
+- Mantém um sinal persistente caso o runtime termine antes de `app.js` executar.
+- Adiciona watchdog de 30 s com mensagem explícita se o runtime não inicializar.

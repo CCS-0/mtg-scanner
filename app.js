@@ -68,61 +68,69 @@
     if (running) setStatus('Detector pronto — procurando uma carta…');
   }
 
-  async function initializeOpenCv() {
+  async function resolveCvObject() {
     try {
-      // Algumas compilações atuais do OpenCV.js expõem cv como Promise;
-      // outras expõem o objeto antes de o runtime WASM terminar de inicializar.
+      // OpenCV 4.13 pode expor `cv` diretamente ou como Promise.
       if (window.cv && typeof window.cv.then === 'function') {
+        engineStatus.textContent = 'Finalizando inicialização do OpenCV…';
         window.cv = await window.cv;
       }
-
       if (window.cv && window.cv.Mat) {
         markCvReady();
-        return;
+        return true;
       }
-
-      if (window.cv) {
-        const previousInit = window.cv.onRuntimeInitialized;
-        window.cv.onRuntimeInitialized = function () {
-          try { if (typeof previousInit === 'function') previousInit(); } catch (_) {}
-          markCvReady();
-        };
-      }
-
-      // Fallback para navegadores nos quais onRuntimeInitialized não dispara
-      // da forma esperada depois do carregamento do script.
-      const started = Date.now();
-      const timer = setInterval(() => {
-        if (window.cv && window.cv.Mat) {
-          clearInterval(timer);
-          markCvReady();
-        } else if (Date.now() - started > 20000) {
-          clearInterval(timer);
-          if (!cvReady) {
-            engineDot.classList.add('error');
-            engineStatus.textContent = 'Detector demorou para carregar';
-            if (running) setStatus('Câmera ativa — detector ainda indisponível');
-          }
-        }
-      }, 150);
     } catch (err) {
-      console.error('OpenCV:', err);
-      engineDot.classList.add('error');
-      engineStatus.textContent = 'Falha ao carregar o detector';
-      if (running) setStatus('Câmera ativa — falha no detector');
+      console.error('OpenCV resolve:', err);
     }
+    return false;
   }
 
-  window.onOpenCvScriptLoaded = function () {
-    engineStatus.textContent = 'Inicializando detector geométrico…';
-    initializeOpenCv();
-  };
+  function startOpenCvWatchdog() {
+    const started = Date.now();
+    const timer = setInterval(async () => {
+      if (cvReady) {
+        clearInterval(timer);
+        return;
+      }
+      if (await resolveCvObject()) {
+        clearInterval(timer);
+        return;
+      }
+      const elapsed = Date.now() - started;
+      if (elapsed > 30000) {
+        clearInterval(timer);
+        engineDot.classList.add('error');
+        engineStatus.textContent = 'OpenCV não inicializou — recarregue a página';
+        if (running) setStatus('Câmera ativa — detector indisponível');
+      }
+    }, 250);
+  }
 
-  window.onOpenCvScriptFailed = function () {
+  // Se o runtime já terminou antes do app.js executar, o sinal persistente resolve a corrida.
+  if (window.__opencvRuntimeReady) {
+    engineStatus.textContent = 'Runtime OpenCV pronto — conectando detector…';
+    resolveCvObject();
+  } else {
+    engineStatus.textContent = 'Carregando OpenCV 4.13…';
+  }
+
+  window.addEventListener('opencv-script-loaded', () => {
+    if (!cvReady) engineStatus.textContent = 'OpenCV baixado — inicializando runtime…';
+    resolveCvObject();
+  });
+
+  window.addEventListener('opencv-runtime-ready', () => {
+    engineStatus.textContent = 'Runtime OpenCV pronto — conectando detector…';
+    resolveCvObject();
+  });
+
+  window.addEventListener('opencv-script-error', () => {
     engineDot.classList.add('error');
-    engineStatus.textContent = 'Falha ao baixar o detector';
-    if (running) setStatus('Câmera ativa — detector não carregou');
-  };
+    engineStatus.textContent = 'Falha ao baixar OpenCV 4.13';
+    if (running) setStatus('Câmera ativa — detector não foi baixado');
+  });
+
+  startOpenCvWatchdog();
 
   function setStatus(text) { statusEl.textContent = text; }
 
