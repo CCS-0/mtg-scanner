@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#101318" />
-  <title>Acervo MTG — Scanner v0.1</title>
+  <title>Acervo MTG — Scanner v0.2</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -13,7 +13,7 @@
     <header>
       <div>
         <p class="eyebrow">ACERVO MTG</p>
-        <h1>Scanner v0.1</h1>
+        <h1>Scanner v0.2</h1>
       </div>
       <div class="counter">
         <span id="count">0</span>
@@ -21,8 +21,14 @@
       </div>
     </header>
 
+    <div class="engine-line">
+      <span class="engine-dot" id="engineDot"></span>
+      <span id="engineStatus">Carregando detector de cartas…</span>
+    </div>
+
     <section class="camera-shell" id="cameraShell">
       <video id="video" playsinline muted></video>
+      <canvas id="overlayCanvas"></canvas>
 
       <div class="shade"></div>
       <div class="card-frame" id="cardFrame">
@@ -30,19 +36,34 @@
         <span class="corner tr"></span>
         <span class="corner bl"></span>
         <span class="corner br"></span>
-        <div class="frame-label">ALINHE A CARTA</div>
+        <div class="frame-label">POSICIONE UMA CARTA</div>
       </div>
 
       <div class="status-pill" id="status">Câmera desligada</div>
     </section>
 
     <section class="controls">
-      <button id="startBtn" class="primary">Iniciar câmera</button>
+      <button id="startBtn" class="primary" disabled>Iniciar câmera</button>
       <button id="manualBtn" class="secondary" disabled>Capturar agora</button>
       <label class="toggle">
         <input id="autoToggle" type="checkbox" checked />
-        <span>Captura automática</span>
+        <span>Captura automática somente quando detectar uma carta</span>
       </label>
+    </section>
+
+    <section class="detector-panel">
+      <div class="detector-row">
+        <span>Objeto</span>
+        <strong id="objectState">—</strong>
+      </div>
+      <div class="detector-row">
+        <span>Proporção detectada</span>
+        <strong id="ratioState">—</strong>
+      </div>
+      <div class="detector-row">
+        <span>Confiança geométrica</span>
+        <strong id="confidenceState">—</strong>
+      </div>
     </section>
 
     <section class="last-capture">
@@ -51,29 +72,37 @@
         <span id="quality">—</span>
       </div>
       <div class="preview-empty" id="previewEmpty">
-        A imagem recortada da carta aparecerá aqui.
+        A carta retificada aparecerá aqui após uma captura válida.
       </div>
       <img id="preview" alt="Última carta capturada" hidden />
     </section>
 
     <details class="tuning">
       <summary>Ajustes de teste</summary>
+      <p class="hint">Os valores padrão são deliberadamente conservadores. Primeiro teste sem alterar.</p>
       <label>
-        Estabilidade
-        <input id="stableThreshold" type="range" min="1" max="20" value="6" />
-        <output id="stableValue">6</output>
+        Tolerância da proporção
+        <input id="ratioTolerance" type="range" min="8" max="28" value="18" />
+        <output id="ratioToleranceValue">18%</output>
       </label>
       <label>
-        Movimento para liberar próxima carta
-        <input id="changeThreshold" type="range" min="5" max="40" value="18" />
-        <output id="changeValue">18</output>
+        Estabilidade dos cantos
+        <input id="cornerThreshold" type="range" min="2" max="18" value="8" />
+        <output id="cornerThresholdValue">8 px</output>
+      </label>
+      <label>
+        Área mínima da carta
+        <input id="minArea" type="range" min="25" max="70" value="38" />
+        <output id="minAreaValue">38%</output>
       </label>
     </details>
 
-    <canvas id="sampleCanvas" width="48" height="67" hidden></canvas>
+    <canvas id="detectCanvas" width="360" height="504" hidden></canvas>
+    <canvas id="captureSourceCanvas" width="720" height="1008" hidden></canvas>
     <canvas id="captureCanvas" width="630" height="880" hidden></canvas>
   </main>
 
   <script src="app.js"></script>
+  <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvScriptLoaded()"></script>
 </body>
 </html>

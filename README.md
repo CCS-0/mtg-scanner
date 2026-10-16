@@ -1,99 +1,79 @@
-# Acervo MTG — Scanner v0.1
+# Acervo MTG — Scanner v0.2
 
-Primeiro protótipo do scanner contínuo para o Acervo MTG.
+Esta versão corrige o principal problema observado na v0.1: **uma cena qualquer, apenas por ficar estável, não deve mais disparar uma captura**.
 
-## O que esta versão faz
+## O que mudou
 
-- Abre a câmera traseira do celular.
-- Exibe uma moldura na proporção física aproximada de uma carta MTG (63:88).
-- Observa a região da moldura em vídeo contínuo.
-- Quando a imagem permanece estável por alguns quadros, captura automaticamente.
-- Emite um bip.
-- Mostra a carta recortada.
-- Bloqueia nova captura até detectar movimento/troca da carta.
-- Permite ajustar os limiares de estabilidade e movimento.
+A captura automática agora exige, nesta ordem:
 
-## O que ainda NÃO faz
+1. OpenCV encontrar um contorno fechado;
+2. o contorno ser aproximável por um quadrilátero convexo;
+3. ocupar uma área mínima da região de leitura;
+4. ter proporção compatível com uma carta MTG (alvo físico 63:88 ≈ 0,716);
+5. estar razoavelmente centralizado;
+6. os quatro cantos permanecerem estáveis por várias análises consecutivas.
 
-- OCR.
-- Identificação do nome da carta.
-- Identificação de set / collector number.
-- Consulta ao Scryfall.
-- Inclusão na planilha.
-- Detecção confiável de foil.
-- Detecção automática das bordas reais da carta.
+Somente então ocorre a captura automática.
 
-Isso é proposital: primeiro validamos a parte física/câmera.
+Além disso, a imagem é corrigida por perspectiva e convertida para 630 × 880 px.
 
-## Teste rápido no computador
+## Como atualizar seu GitHub Pages
 
-Você pode abrir o `index.html`, mas navegadores podem restringir câmera em arquivos locais.
-O ideal é servir por `localhost`.
+Substitua no repositório os arquivos da v0.1 por estes arquivos:
 
-Com Python instalado:
+- `index.html`
+- `app.js`
+- `styles.css`
+- `manifest.webmanifest`
+- `README.md`
 
-```bash
-cd mtg-scanner-v0.1
-python -m http.server 8000
-```
+Faça commit na branch publicada pelo GitHub Pages. Aguarde a publicação e recarregue a página do celular. Se o navegador mantiver a versão antiga, use recarga completa/limpe o cache do site.
 
-Abra:
+## Teste A — sem carta
 
-```text
-http://localhost:8000
-```
+Abra a câmera e deixe a mesa vazia e estável por 10–15 segundos.
 
-`localhost` é aceito como contexto seguro pelos navegadores modernos.
+**Resultado esperado:**
 
-## Teste no celular
+- `Nenhuma carta detectada`
+- contador permanece em 0
+- nenhuma captura automática
 
-Para a câmera funcionar em uma página acessada pelo celular, publique o projeto via HTTPS.
+## Teste B — objetos aleatórios
 
-### Opção simples: GitHub Pages
+Passe a mão, um celular, uma caneta, uma folha e outros objetos pela área.
 
-1. Crie um repositório no GitHub, por exemplo `mtg-scanner`.
-2. Envie para a raiz os arquivos desta pasta.
-3. No repositório, abra `Settings`.
-4. Abra `Pages`.
-5. Em `Build and deployment`, escolha `Deploy from a branch`.
-6. Escolha a branch `main` e a pasta `/(root)`.
-7. Salve.
-8. Abra no celular a URL publicada pelo GitHub Pages.
-9. Toque em `Iniciar câmera` e permita o acesso.
+**Resultado esperado:** não capturar, salvo se o objeto formar um quadrilátero muito semelhante a uma carta.
 
-## Montagem física recomendada para o teste
+## Teste C — carta real
 
-- Celular preso em suporte, câmera apontada verticalmente para baixo.
-- Distância inicial: aproximadamente 25–35 cm da carta.
-- Luz difusa dos dois lados.
-- Evite reflexo direto de luminária no sleeve.
-- Fundo fosco e uniforme.
-- Faça primeiro os testes com cartas sem sleeve.
+Coloque uma carta de Magic aproximadamente dentro da moldura.
 
-## Como testar
+A tela deve mudar para:
 
-1. Abra a câmera.
-2. Coloque uma carta dentro da moldura.
-3. Mantenha a mão parada.
-4. O status deverá mudar para `Segure...` e depois `Carta estável`.
-5. Deve ocorrer a captura e o bip.
-6. Retire a carta.
-7. Coloque outra.
-8. Repita com 20 cartas diferentes.
+- `carta provável`
+- mostrar a proporção encontrada
+- desenhar um polígono sobre os quatro cantos
+- `Carta detectada — segure`
+- `Carta detectada e estável`
+- BIP + captura
 
-Anote:
-- capturas duplicadas;
-- capturas antes do foco;
-- necessidade de mover muito a carta para liberar a próxima;
-- reflexos;
-- distância ideal da câmera.
+Depois retire a carta completamente. O sistema só libera a próxima captura após alguns quadros sem carta detectada.
 
-## Próxima versão
+## Ajustes
 
-A v0.2 adicionará:
-1. detecção automática do contorno da carta;
-2. correção de perspectiva;
-3. recortes separados da faixa do nome e da linha inferior;
-4. pré-processamento para OCR.
+Deixe os padrões primeiro:
 
-Depois entra o OCR e a identificação no Scryfall.
+- tolerância da proporção: 18%
+- estabilidade dos cantos: 8 px
+- área mínima: 38%
+
+Se não detectar cartas verdadeiras, aumente a tolerância para 22–24% ou reduza a área mínima para 32–35%.
+
+Se detectar objetos indevidos como carta, faça o inverso: reduza a tolerância e/ou aumente a área mínima.
+
+## Limitação consciente desta versão
+
+A v0.2 reconhece **geometria de carta**, ainda não reconhece que o conteúdo é especificamente uma carta de Magic. Um objeto retangular com proporção muito próxima a 63:88 pode eventualmente passar pelo filtro.
+
+A próxima etapa (v0.3) será a validação semântica: ler a faixa do nome e/ou a linha de coleção/collector number via OCR antes de considerar a captura válida.
