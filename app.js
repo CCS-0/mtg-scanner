@@ -10,6 +10,8 @@ const cameraStatus=$('cameraStatus'),cameraDot=$('cameraDot'),focusStatus=$('foc
 const photoStatus=$('photoStatus'),photoDot=$('photoDot');
 const streamInfo=$('streamInfo'),continuousFocusInfo=$('continuousFocusInfo');
 const photoInfo=$('photoInfo'),captureMethodInfo=$('captureMethodInfo'),photoCaptureInfo=$('photoCaptureInfo'),photoMaxInfo=$('photoMaxInfo');
+const trackCapabilityInfo=$('trackCapabilityInfo'),resizeModeInfo=$('resizeModeInfo');
+const cameraSelect=$('cameraSelect'),switchCameraBtn=$('switchCameraBtn'),maxWebModeToggle=$('maxWebModeToggle');
 const tapFocusInfo=$('tapFocusInfo'),focusRing=$('focusRing'),tapHint=$('tapHint');
 const cardStateEl=$('cardState'),confidenceEl=$('confidence'),ratioEl=$('ratio'),stabilityEl=$('stability'),bottomSharpnessEl=$('bottomSharpness');
 const zoomWrap=$('zoomWrap'),zoomSlider=$('zoomSlider'),zoomValue=$('zoomValue');
@@ -29,6 +31,7 @@ const footerOcrCanvas=$('footerOcrCanvas'),fctx=footerOcrCanvas.getContext('2d',
 
 let stream=null,track=null,capabilities={},running=false,lastAnalyzeAt=0,captureCount=0,stableFrames=0,sharpFrames=0,locked=false,unlockFrames=0,prevEdges=null,audioCtx=null;
 let imageCapture=null,photoCapabilities=null,captureBusy=false;
+let selectedDeviceId='', analyzerGeneration=0;
 let tapPointSupported=false, singleShotFocusSupported=false, continuousFocusSupported=false;
 let tesseractWorker=null,ocrBusy=false,lastCaptured=false;
 const IDEAL_RATIO=63/88;
@@ -91,7 +94,7 @@ function resetRecognition(){
 
 function prepareCaptureCanvas(sourceCropW,sourceCropH){
   // Preserve real detail without creating excessively large canvases on mobile.
-  const maxW=2100,maxH=Math.round(maxW*88/63);
+  const maxW=3000,maxH=Math.round(maxW*88/63);
   let outW=Math.max(720,Math.round(sourceCropW));
   let outH=Math.max(1006,Math.round(sourceCropH));
   const scale=Math.min(1,maxW/outW,maxH/outH);
@@ -223,11 +226,22 @@ async function capture(){
 function updateUI(r,movement){confidenceEl.textContent=r.confidence+'%';ratioEl.textContent=r.ratio?r.ratio.toFixed(3):'—';bottomSharpnessEl.textContent=r.sharpness?r.sharpness.toFixed(1):'—';if(!r.detected){cardStateEl.textContent='não detectada';stabilityEl.textContent='—';frame.classList.remove('detected','ready');stableFrames=0;sharpFrames=0;if(!locked)setStatus('Nenhuma carta detectada');return}cardStateEl.textContent='provável carta';frame.classList.add('detected');if(movement<Number(stableThreshold.value))stableFrames++;else stableFrames=0;if(r.sharpness>=Number(sharpnessThreshold.value))sharpFrames++;else sharpFrames=0;stabilityEl.textContent=`${Math.min(stableFrames,5)}/5`;if(stableFrames>=2&&sharpFrames<2){setStatus('Carta estável — aguardando foco na faixa inferior');frame.classList.remove('ready')}else if(stableFrames>=2)setStatus('Carta detectada — segure');if(stableFrames>=6&&sharpFrames>=4){frame.classList.add('ready');setStatus('Carta estável e nítida')}else frame.classList.remove('ready')}
 function analyze(now){if(!running)return;requestAnimationFrame(analyze);if(now-lastAnalyzeAt<250)return;lastAnalyzeAt=now;const g=getGrayFrame();if(!g)return;const r=detectCard(g),movement=r.detected?edgeMovement(r.edges):999;if(locked){if(!r.detected||movement>12)unlockFrames++;else unlockFrames=0;if(unlockFrames>=2){locked=false;unlockFrames=0;prevEdges=null;setStatus('Pronto para a próxima carta')}confidenceEl.textContent=r.confidence+'%';ratioEl.textContent=r.ratio?r.ratio.toFixed(3):'—';bottomSharpnessEl.textContent=r.sharpness?r.sharpness.toFixed(1):'—';cardStateEl.textContent=r.detected?'retire a carta':'trocando';stabilityEl.textContent='bloqueada';prevEdges=r.detected?r.edges:null;return}updateUI(r,movement);if(r.detected&&autoToggle.checked&&stableFrames>=6&&sharpFrames>=4)capture();prevEdges=r.detected?r.edges:null}
 
-function updateStreamInfo(){if(!track)return;const s=track.getSettings?track.getSettings():{};streamInfo.textContent=s.width&&s.height?`${s.width} × ${s.height}${s.frameRate?` · ${Math.round(s.frameRate)} fps`:''}`:'não informado pelo navegador'}
+function updateStreamInfo(){
+  if(!track)return;
+  const s=track.getSettings?track.getSettings():{};
+  streamInfo.textContent=s.width&&s.height
+    ? `${s.width} × ${s.height}${s.frameRate?` · ${Math.round(s.frameRate)} fps`:''}`
+    : 'não informado pelo navegador';
+  resizeModeInfo.textContent=s.resizeMode||'não informado';
+}
 async function applyBestFocus(){
   if(!track)return;
 
   capabilities=track.getCapabilities?track.getCapabilities():{};
+  const capW=capabilities.width?.max, capH=capabilities.height?.max, capF=capabilities.frameRate?.max;
+  trackCapabilityInfo.textContent=(capW&&capH)
+    ? `até ${Math.round(capW)} × ${Math.round(capH)}${capF?` · até ${Math.round(capF)} fps`:''}`
+    : 'não informada pelo navegador';
   const supported=navigator.mediaDevices.getSupportedConstraints
     ? navigator.mediaDevices.getSupportedConstraints()
     : {};
@@ -408,6 +422,106 @@ zoomSlider.addEventListener('input',async()=>{if(!track)return;const z=Number(zo
 refocusBtn.addEventListener('click',async()=>{setStatus('Reaplicando foco…');await applyBestFocus();setStatus('Foco reaplicado — alinhe a carta')})
 
 
+
+async function refreshCameraList(){
+  try{
+    const devices=await navigator.mediaDevices.enumerateDevices();
+    const cameras=devices.filter(d=>d.kind==='videoinput');
+    const current=cameraSelect.value||selectedDeviceId||'';
+    cameraSelect.innerHTML='<option value="">Automática (traseira)</option>';
+    cameras.forEach((d,i)=>{
+      const opt=document.createElement('option');
+      opt.value=d.deviceId;
+      opt.textContent=d.label||`Câmera ${i+1}`;
+      cameraSelect.appendChild(opt);
+    });
+    if(current&&cameras.some(c=>c.deviceId===current))cameraSelect.value=current;
+    switchCameraBtn.disabled=cameras.length===0;
+  }catch(err){
+    console.warn('Não foi possível enumerar câmeras',err);
+    switchCameraBtn.disabled=true;
+  }
+}
+
+function nativeResolutionCandidates(caps){
+  const maxW=Math.floor(caps.width?.max||3840);
+  const maxH=Math.floor(caps.height?.max||2160);
+  const common=[[8160,6120],[8000,6000],[6000,4500],[4032,3024],[4000,3000],[3840,2880],[3264,2448],[2560,1920],[2048,1536],[1920,1440],[3840,2160],[2560,1440],[1920,1080],[1280,960],[1280,720]];
+  const out=[[maxW,maxH]];
+  for(const [w,h] of common){
+    if(w<=maxW&&h<=maxH&&!out.some(([ow,oh])=>ow===w&&oh===h))out.push([w,h]);
+  }
+  return out;
+}
+
+async function applyMaximumNativeMode(){
+  if(!track||!maxWebModeToggle.checked)return false;
+  const caps=track.getCapabilities?track.getCapabilities():{};
+  const resizeModes=Array.isArray(caps.resizeMode)?caps.resizeMode:[];
+  const canNative=resizeModes.includes('none');
+  const attempts=nativeResolutionCandidates(caps);
+  setStatus('Procurando maior modo nativo da câmera…');
+  for(const [w,h] of attempts){
+    try{
+      const constraints={width:{exact:w},height:{exact:h},frameRate:{ideal:15,max:15}};
+      if(canNative)constraints.resizeMode={exact:'none'};
+      await track.applyConstraints(constraints);
+      const s=track.getSettings?track.getSettings():{};
+      if(s.width&&s.height){updateStreamInfo();setStatus(`Modo máximo: ${s.width} × ${s.height}`);return true;}
+    }catch(_){}
+  }
+  try{
+    const fallback={width:{ideal:caps.width?.max||3840},height:{ideal:caps.height?.max||2160},aspectRatio:{ideal:4/3},frameRate:{ideal:15,max:15}};
+    if(canNative)fallback.resizeMode={ideal:'none'};
+    await track.applyConstraints(fallback);
+    updateStreamInfo();
+    return true;
+  }catch(err){
+    console.warn('Modo máximo não pôde ser aplicado',err);
+    updateStreamInfo();
+    return false;
+  }
+}
+
+async function openCamera(deviceId=''){
+  analyzerGeneration++;
+  const generation=analyzerGeneration;
+  running=false;
+  if(stream){try{stream.getTracks().forEach(t=>t.stop())}catch(_){}}
+  imageCapture=null;photoCapabilities=null;track=null;stream=null;
+  const videoConstraints={width:{ideal:3840},height:{ideal:2160},aspectRatio:{ideal:4/3},frameRate:{ideal:15,max:15},resizeMode:{ideal:'none'}};
+  if(deviceId)videoConstraints.deviceId={exact:deviceId};
+  else videoConstraints.facingMode={ideal:'environment'};
+  stream=await navigator.mediaDevices.getUserMedia({audio:false,video:videoConstraints});
+  track=stream.getVideoTracks()[0];
+  selectedDeviceId=track.getSettings?.().deviceId||deviceId||'';
+  video.srcObject=stream;
+  await video.play();
+  if(maxWebModeToggle.checked){await applyMaximumNativeMode();await new Promise(resolve=>setTimeout(resolve,180));}
+  running=true;manualBtn.disabled=false;startBtn.textContent='Câmera ativa';cameraStatus.textContent='Câmera ativa';setDot(cameraDot,'ok');
+  updateStreamInfo();await applyBestFocus();await setupImageCapture();await refreshCameraList();
+  if(selectedDeviceId)cameraSelect.value=selectedDeviceId;
+  setStatus('Procure uma carta dentro da moldura');
+  requestAnimationFrame(t=>analyzeGeneration(t,generation));
+}
+
+function analyzeGeneration(now,generation){
+  if(generation!==analyzerGeneration||!running)return;
+  requestAnimationFrame(t=>analyzeGeneration(t,generation));
+  if(now-lastAnalyzeAt<250)return;
+  lastAnalyzeAt=now;
+  const g=getGrayFrame();if(!g)return;
+  const r=detectCard(g),movement=r.detected?edgeMovement(r.edges):999;
+  if(locked){
+    if(!r.detected||movement>12)unlockFrames++;else unlockFrames=0;
+    if(unlockFrames>=2){locked=false;unlockFrames=0;prevEdges=null;setStatus('Pronto para a próxima carta');}
+    confidenceEl.textContent=r.confidence+'%';ratioEl.textContent=r.ratio?r.ratio.toFixed(3):'—';bottomSharpnessEl.textContent=r.sharpness?r.sharpness.toFixed(1):'—';cardStateEl.textContent=r.detected?'retire a carta':'trocando';stabilityEl.textContent='bloqueada';prevEdges=r.detected?r.edges:null;return;
+  }
+  updateUI(r,movement);
+  if(r.detected&&autoToggle.checked&&stableFrames>=6&&sharpFrames>=4)capture();
+  prevEdges=r.detected?r.edges:null;
+}
+
 async function setupImageCapture(){
   imageCapture=null;
   photoCapabilities=null;
@@ -457,37 +571,10 @@ async function setupImageCapture(){
 async function startCamera(){
   setStatus('Solicitando câmera…');
   startBtn.disabled=true;
-
   try{
     audioCtx??=new(window.AudioContext||window.webkitAudioContext)();
-
-    stream=await navigator.mediaDevices.getUserMedia({
-      audio:false,
-      video:{
-        facingMode:{ideal:'environment'},
-        width:{min:1280,ideal:1920,max:3840},
-        height:{min:720,ideal:1080,max:2160},
-        frameRate:{ideal:30,max:30}
-      }
-    });
-
-    track=stream.getVideoTracks()[0];
-    video.srcObject=stream;
-    await video.play();
-
-    running=true;
-    manualBtn.disabled=false;
-    startBtn.textContent='Câmera ativa';
-    cameraStatus.textContent='Câmera ativa';
-    setDot(cameraDot,'ok');
-
-    updateStreamInfo();
-    await applyBestFocus();
-    await setupImageCapture();
-
-    setStatus('Procure uma carta dentro da moldura');
-    requestAnimationFrame(analyze);
-
+    await openCamera('');
+    startBtn.disabled=true;
   }catch(err){
     console.error(err);
     startBtn.disabled=false;
@@ -629,6 +716,20 @@ async function analyzeCapturedCard(){
 }
 
 reanalyzeBtn.addEventListener('click',analyzeCapturedCard);
+
+switchCameraBtn.addEventListener('click',async()=>{
+  const id=cameraSelect.value;
+  switchCameraBtn.disabled=true;
+  setStatus('Trocando câmera…');
+  try{await openCamera(id)}catch(err){console.error(err);setStatus('Não foi possível abrir a câmera selecionada')}finally{switchCameraBtn.disabled=false}
+});
+
+maxWebModeToggle.addEventListener('change',async()=>{
+  if(!track)return;
+  setStatus('Reabrindo câmera com a nova configuração…');
+  try{await openCamera(cameraSelect.value||selectedDeviceId||'')}catch(err){console.error(err);setStatus('Falha ao aplicar modo de resolução')}
+});
+
 startBtn.addEventListener('click',startCamera);
 manualBtn.addEventListener('click',capture);
 window.addEventListener('beforeunload',()=>{stream?.getTracks().forEach(t=>t.stop());try{tesseractWorker?.terminate()}catch(_){}});

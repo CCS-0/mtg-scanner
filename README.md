@@ -1,4 +1,4 @@
-# Acervo MTG — Scanner v0.3.4
+# Acervo MTG — Scanner v0.3.5
 
 Versão de ajuste óptico do scanner.
 
@@ -75,7 +75,7 @@ Substitua:
 - manifest.webmanifest
 - README.md
 
-Confirme `Scanner v0.3.4`.
+Confirme `Scanner v0.3.5`.
 
 ## Dependências externas
 
@@ -83,7 +83,7 @@ Tesseract.js v5 é carregado sob demanda via jsDelivr.
 Scryfall é consultado diretamente pelo navegador.
 
 
-## Ajuste v0.3.4
+## Ajuste v0.3.5
 
 O tamanho mínimo da moldura foi reduzido de 48% para 35%.
 
@@ -94,7 +94,7 @@ Faixa atual:
 Isso permite afastar mais o celular da carta para buscar uma distância de foco melhor.
 
 
-## Ajuste v0.3.4 — toque para focar
+## Ajuste v0.3.5 — toque para focar
 
 A moldura padrão passa a ser 45%.
 
@@ -116,7 +116,7 @@ Um quadrado aparece no ponto tocado para confirmar a interação.
 Em `Ajustes da câmera`, a linha `Toque para focar` informa o nível de suporte disponível no aparelho.
 
 
-## Ajuste v0.3.4 — fotografia real
+## Ajuste v0.3.5 — fotografia real
 
 Esta versão testa `ImageCapture.takePhoto()`.
 
@@ -155,3 +155,17 @@ O dado decisivo é comparar o rodapé:
 6. compare visualmente e pelo OCR.
 
 Se a fotografia real ainda ficar muito abaixo do app nativo da câmera, o próximo passo recomendado é encerrar o protótipo web e migrar para Android CameraX.
+
+
+## Ajuste v0.3.5 — Modo Máximo Web
+
+Novidades:
+- seleção explícita da câmera física via enumerateDevices + deviceId;
+- resizeMode: none quando disponível;
+- redução do stream para cerca de 15 fps;
+- preferência por 4:3;
+- leitura de getCapabilities() e tentativa sequencial de resoluções nativas altas;
+- exibição de getSettings().resizeMode;
+- limite interno do recorte aumentado de 2100 px para 3000 px.
+
+Teste cada câmera traseira listada e compare Capacidade anunciada, Stream real, Resize mode real e o rodapé da carta.

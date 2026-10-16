@@ -4,17 +4,17 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#101318" />
-  <title>Acervo MTG — Scanner v0.3.4</title>
-  <link rel="manifest" href="manifest.webmanifest?v=034" />
-  <link rel="stylesheet" href="styles.css?v=034" />
+  <title>Acervo MTG — Scanner v0.3.5</title>
+  <link rel="manifest" href="manifest.webmanifest?v=035" />
+  <link rel="stylesheet" href="styles.css?v=035" />
 </head>
 <body>
   <main class="app">
     <header>
       <div>
         <p class="eyebrow">ACERVO MTG</p>
-        <h1>Scanner v0.3.4</h1>
-        <p class="sub">Foto real + OCR</p>
+        <h1>Scanner v0.3.5</h1>
+        <p class="sub">Modo Máximo Web + OCR</p>
       </div>
       <div class="counter">
         <span id="count">0</span>
@@ -58,6 +58,8 @@
       <div><small>Estabilidade</small><strong id="stability">—</strong></div>
       <div class="metric-wide"><small>Nitidez inferior</small><strong id="bottomSharpness">—</strong></div>
       <div class="metric-wide"><small>Stream real</small><strong id="streamInfo">—</strong></div>
+      <div class="metric-wide"><small>Capacidade anunciada do track</small><strong id="trackCapabilityInfo">—</strong></div>
+      <div class="metric-wide"><small>Resize mode real</small><strong id="resizeModeInfo">—</strong></div>
       <div class="metric-wide"><small>Foto disponível</small><strong id="photoInfo">—</strong></div>
       <div class="metric-wide"><small>Último método de captura</small><strong id="captureMethodInfo">—</strong></div>
     </section>
@@ -144,6 +146,20 @@
       <div class="setting-row"><span>Foco contínuo</span><strong id="continuousFocusInfo">—</strong></div>
       <div class="setting-row"><span>Toque para focar</span><strong id="tapFocusInfo">aguardando câmera</strong></div>
       <div class="setting-row"><span>Captura fotográfica</span><strong id="photoCaptureInfo">aguardando câmera</strong></div>
+
+      <label>
+        Câmera física
+        <select id="cameraSelect">
+          <option value="">Automática (traseira)</option>
+        </select>
+      </label>
+      <button id="switchCameraBtn" class="secondary full" type="button" disabled>Aplicar câmera selecionada</button>
+
+      <label class="toggle inside">
+        <input id="maxWebModeToggle" type="checkbox" checked />
+        <span>Modo Máximo Web</span>
+      </label>
+      <p class="helper">Tenta usar resolução nativa, 15 fps e a maior combinação de resolução aceita sem redimensionamento pelo navegador.</p>
       <div class="setting-row"><span>Resolução fotográfica máx.</span><strong id="photoMaxInfo">—</strong></div>
       <label id="zoomWrap" hidden>
         Zoom
@@ -182,7 +198,7 @@
 
     <section class="notes">
       <h2>Objetivo desta versão</h2>
-      <p>Esta versão testa a captura fotográfica real. Quando <code>ImageCapture.takePhoto()</code> estiver disponível, o detector continua usando o vídeo leve, mas a imagem enviada ao OCR vem de uma exposição fotográfica em resolução maior. Se o recurso não existir ou falhar, o scanner usa automaticamente o frame de vídeo anterior.</p>
+      <p>Esta versão testa o máximo que o navegador consegue expor: seleção da câmera física, resolução nativa sem crop-and-scale quando possível e captura fotográfica real. Quando <code>ImageCapture.takePhoto()</code> estiver disponível, o detector continua usando o vídeo leve, mas a imagem enviada ao OCR vem de uma exposição fotográfica em resolução maior. Se o recurso não existir ou falhar, o scanner usa automaticamente o frame de vídeo anterior.</p>
     </section>
 
     <canvas id="analysisCanvas" width="240" height="336" hidden></canvas>
@@ -191,6 +207,6 @@
     <canvas id="footerOcrCanvas" width="1800" height="300" hidden></canvas>
   </main>
 
-  <script src="app.js?v=034"></script>
+  <script src="app.js?v=035"></script>
 </body>
 </html>
